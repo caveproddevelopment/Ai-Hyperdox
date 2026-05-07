@@ -106,8 +106,7 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
     )
 
 with gr.Blocks(
-    title="AIPM – Monte Turner's AI Project Manager",
-    theme=gr.themes.Soft(primary_hue="blue", neutral_hue="gray")
+    title="AIPM – Monte Turner's AI Project Manager"
 ) as demo:
     gr.HTML("<div style='text-align:center'><h1>📄 AIPM – AI Project Manager Enhanced</h1>"
             "<p>Generate SMART Goals | Scope | Risk | Milestones | Resources</p></div>")
@@ -135,4 +134,4 @@ with gr.Blocks(
     gr.HTML("<p style='text-align:center;color:gray;font-size:12px;'>© 2026 Caveman Productions Media – AIPM v1.2 Enhanced</p>")
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 8080)))
+    demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 8080)), share=False, show_error=True)
