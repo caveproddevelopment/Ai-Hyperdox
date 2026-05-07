@@ -105,34 +105,35 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
         pdfs["Resource Teams Required Document"],
     )
 
-with gr.Blocks(
-    title="AIPM – Monte Turner's AI Project Manager",
-    theme=gr.themes.Soft(primary_hue="blue", neutral_hue="gray")
-) as demo:
-    gr.HTML("<div style='text-align:center'><h1>📄 AIPM – AI Project Manager Enhanced</h1>"
-            "<p>Generate SMART Goals | Scope | Risk | Milestones | Resources</p></div>")
+with gr.Blocks(title="AIPM – Monte Turner's AI Project Manager") as demo:
+    gr.HTML("<div style='text-align:center'><h1>📄 AIPM – AI Project Manager Enhanced</h1>"
+            "<p>Generate SMART Goals | Scope | Risk | Milestones | Resources</p></div>")
     with gr.Row():
         with gr.Column(scale=1):
-            project_name = gr.Textbox(label="Project Name (short)", placeholder="e.g. Jocksalot Fan", lines=1)
-            problem = gr.Textbox(label="What Problem is Being Solved?", lines=3)
-            summary = gr.Textbox(label="High‑Level Summary (1–2 sentences)", lines=2)
-            long_desc = gr.Textbox(label="Longer Description / Requirements", lines=10)
-            uploads = gr.File(label="Upload Documents (PDF / DOCX / TXT)", file_count="multiple")
-            submit_btn = gr.Button("🚀 Generate Documents", variant="primary")
+            project_name = gr.Textbox(label="Project Name (short)", placeholder="e.g. Jocksalot Fan", lines=1)
+            problem = gr.Textbox(label="What Problem is Being Solved?", lines=3)
+            summary = gr.Textbox(label="High‑Level Summary (1–2 sentences)", lines=2)
+            long_desc = gr.Textbox(label="Longer Description / Requirements", lines=10)
+            uploads = gr.File(label="Upload Documents (PDF / DOCX / TXT)", file_count="multiple")
+            submit_btn = gr.Button("🚀 Generate Documents", variant="primary")
         with gr.Column(scale=1):
-            status = gr.Textbox(label="Status Message")
-            pdf_goals = gr.File(label="Goals Document (Download)")
-            pdf_scope = gr.File(label="Scope Document (Download)")
-            pdf_risk = gr.File(label="Risk Document (Download)")
-            pdf_milestones = gr.File(label="Proposed Milestones Document (Download)")
-            pdf_resources = gr.File(label="Resource Teams Required Document (Download)")
+            status = gr.Textbox(label="Status Message")
+            pdf_goals = gr.File(label="Goals Document (Download)")
+            pdf_scope = gr.File(label="Scope Document (Download)")
+            pdf_risk = gr.File(label="Risk Document (Download)")
+            pdf_milestones = gr.File(label="Proposed Milestones Document (Download)")
+            pdf_resources = gr.File(label="Resource Teams Required Document (Download)")
     submit_btn.click(
         fn=generate_documents,
         inputs=[project_name, problem, summary, long_desc, uploads],
         outputs=[status, pdf_goals, pdf_scope, pdf_risk, pdf_milestones, pdf_resources],
         show_progress=True
     )
-    gr.HTML("<p style='text-align:center;color:gray;font-size:12px;'>© 2026 Caveman Productions Media – AIPM v1.2 Enhanced</p>")
+    gr.HTML("<p style='text-align:center;color:gray;font-size:12px;'>© 2026 Caveman Productions Media – AIPM v1.2 Enhanced</p>")
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 8080)))
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=int(os.environ.get("PORT", 8080)),
+        theme=gr.themes.Soft(primary_hue="blue", neutral_hue="gray")
+    )
