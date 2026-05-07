@@ -7,9 +7,25 @@ from io import BytesIO
 import docx
 import gradio as gr
 import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def log_message(self, format, *args):
+        pass
+
+def run_health_server():
+    server = HTTPServer(("0.0.0.0", 8081), HealthHandler)
+    server.serve_forever()
+
+threading.Thread(target=run_health_server, daemon=True).start()
 
 def extract_text_from_file(uploaded_file):
     name = getattr(uploaded_file, "name", "uploaded_file").lower()
