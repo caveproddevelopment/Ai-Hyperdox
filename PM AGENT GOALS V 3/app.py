@@ -121,7 +121,10 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
         pdfs["Resource Teams Required Document"],
     )
 
-with gr.Blocks(title="AIPM – Monte Turner's AI Project Manager") as demo:
+with gr.Blocks(
+    title="AIPM – Monte Turner's AI Project Manager",
+    queue=True
+) as demo:
     gr.HTML("<div style='text-align:center'><h1>📄 AIPM – AI Project Manager Enhanced</h1>"
             "<p>Generate SMART Goals | Scope | Risk | Milestones | Resources</p></div>")
     with gr.Row():
@@ -151,5 +154,6 @@ if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
         server_port=int(os.environ.get("PORT", 8080)),
-        theme=gr.themes.Soft(primary_hue="blue", neutral_hue="gray")
+        inactivity_timeout=None,
+        show_error=True
     )
