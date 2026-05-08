@@ -152,18 +152,15 @@ export default function GoalsAndScope() {
 
   function getDownloadUrl(fileObj) {
   if (!fileObj) return null;
-  
-  // Already a full URL
   if (typeof fileObj === "string" && fileObj.startsWith("http")) return fileObj;
   
-  // Server path like /tmp/filename.pdf  ← YOUR CASE
+  // Use your new /download endpoint
   if (typeof fileObj === "string") {
-    return `${BASE_URL}/file=${fileObj}`;
+    return `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
   }
-  
-  // Gradio object fallback
+
   const filePath = fileObj?.path ?? fileObj?.url ?? fileObj?.name;
-  return `${BASE_URL}/file=${filePath}`;
+  return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
 }
 
   return (
