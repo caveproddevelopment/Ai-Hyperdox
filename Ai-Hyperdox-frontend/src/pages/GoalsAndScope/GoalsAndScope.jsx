@@ -113,7 +113,7 @@ export default function GoalsAndScope() {
     setDocs(null);
 
     try {
-      console.log("Calling:", `${BASE_URL}/run/predict`);
+      console.log("Calling:", `${BASE_URL}/api/predict`);
       const response = await fetch(`${BASE_URL}/api/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

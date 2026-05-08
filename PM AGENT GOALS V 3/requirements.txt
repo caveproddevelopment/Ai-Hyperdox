@@ -3,3 +3,5 @@ gradio==6.5.1
 reportlab
 PyPDF2
 python-docx
+flask
+flask-cors

@@ -8,8 +8,14 @@ import docx
 import gradio as gr
 import os
 import threading
+import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -121,6 +127,36 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
         pdfs["Resource Teams Required Document"],
     )
 
+# ── Flask REST API Endpoints ──
+@app.route("/api/predict", methods=["POST"])
+def api_predict():
+    """REST API endpoint for document generation"""
+    try:
+        data = request.json or {}
+        input_data = data.get("data", [])
+        
+        if len(input_data) < 4:
+            return jsonify({"error": "Missing required fields"}), 400
+        
+        project_name = input_data[0] or ""
+        problem = input_data[1] or ""
+        summary = input_data[2] or ""
+        long_desc = input_data[3] or ""
+        uploads = input_data[4] if len(input_data) > 4 else []
+        
+        # Call the generate_documents function
+        result = generate_documents(project_name, problem, summary, long_desc, uploads or [])
+        
+        return jsonify({"data": result}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/health", methods=["GET"])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({"status": "ok"}), 200
+
+# ── Gradio UI ──
 with gr.Blocks(title="AIPM – Monte Turner's AI Project Manager") as demo:
     gr.HTML("<div style='text-align:center'><h1>📄 AIPM – AI Project Manager Enhanced</h1>"
             "<p>Generate SMART Goals | Scope | Risk | Milestones | Resources</p></div>")
@@ -148,8 +184,19 @@ with gr.Blocks(title="AIPM – Monte Turner's AI Project Manager") as demo:
     gr.HTML("<p style='text-align:center;color:gray;font-size:12px;'>© 2026 Caveman Productions Media – AIPM v1.2 Enhanced</p>")
 
 if __name__ == "__main__":
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=int(os.environ.get("PORT", 8080)),
-        theme=gr.themes.Soft(primary_hue="blue", neutral_hue="gray")
-    )
+    # Run Gradio in a thread
+    def run_gradio():
+        demo.launch(
+            server_name="127.0.0.1",
+            server_port=7860,
+            share=False,
+            quiet=True,
+            theme=gr.themes.Soft(primary_hue="blue", neutral_hue="gray")
+        )
+    
+    gradio_thread = threading.Thread(target=run_gradio, daemon=True)
+    gradio_thread.start()
+    
+    # Run Flask on the main port
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=False)
