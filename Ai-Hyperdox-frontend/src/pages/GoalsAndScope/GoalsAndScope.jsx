@@ -113,8 +113,7 @@ export default function GoalsAndScope() {
     setDocs(null);
 
     try {
-      // Step 1: Submit job to Gradio
-      const submitRes = await fetch(`${BASE_URL}/call/generate_documents`, {
+      const response = await fetch(`${BASE_URL}/api/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -123,38 +122,22 @@ export default function GoalsAndScope() {
             form.problem,
             form.summary,
             form.long_desc,
-            null,
+            [],
           ],
+          api_name: "/generate_documents",
         }),
       });
 
-      if (!submitRes.ok) {
-        throw new Error(`Submit failed: HTTP ${submitRes.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const { event_id } = await submitRes.json();
-      if (!event_id) throw new Error("No event_id returned from server.");
-
-      // Step 2: Poll for result via SSE
-      const resultRes = await fetch(`${BASE_URL}/call/generate_documents/${event_id}`);
-      if (!resultRes.ok) {
-        throw new Error(`Result fetch failed: HTTP ${resultRes.status}`);
+      const result = await response.json();
+      if (!result.data || !Array.isArray(result.data)) {
+        throw new Error("Invalid response format from server.");
       }
 
-      const text = await resultRes.text();
-
-      // Parse SSE — find last "data:" line with complete payload
-      const dataLines = text
-        .split("\n")
-        .filter(l => l.startsWith("data:"))
-        .map(l => l.replace(/^data:\s*/, "").trim())
-        .filter(Boolean);
-
-      if (!dataLines.length) throw new Error("Empty response from server.");
-
-      const parsed = JSON.parse(dataLines[dataLines.length - 1]);
-      const [statusMsg, goals, scope, risk, milestones, resources] = parsed;
-
+      const [statusMsg, goals, scope, risk, milestones, resources] = result.data;
       setStatus(statusMsg);
       setDocs({ goals, scope, risk, milestones, resources });
 
