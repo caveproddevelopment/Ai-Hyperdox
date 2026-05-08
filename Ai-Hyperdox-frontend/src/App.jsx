@@ -14,6 +14,8 @@ import Profile from './pages/Profile/Profile';
 import NewProject from './pages/NewProject/NewProject';
 import "./App.css";
 import EditProject from "./pages/EditProject/EditProject";
+import GoalsAndScope from "./pages/GoalsAndScope/GoalsAndScope";
+import NewDocumentRun from "./pages/NewDocumentRun/NewDocumentRun";
 
 export default function App() {
   return (
@@ -32,6 +34,8 @@ export default function App() {
         <Route path="/profile"              element={<Profile />} />
         <Route path="/project/new"          element={<NewProject />} />
         <Route path="/project/:projectId/edit" element={<EditProject />} />
+        <Route path="/project/:projectId/run" element={<NewDocumentRun />} />
+        <Route path="/project/:projectId/run/goals-scope" element={<GoalsAndScope />} />
       </Routes>
       </AuthProvider>
     </BrowserRouter>

@@ -1,0 +1,189 @@
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&display=swap');
+
+/* Topbar */
+.gs-topbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gs-project-icon {
+  width: 44px;
+  height: 44px;
+  max-width: 44px;
+  max-height: 44px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #f4f7fb;
+  display: block;
+}
+
+/* Run header */
+.gs-run-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+  flex-wrap: nowrap;
+}
+
+.gs-doc-icon {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.gs-last-run {
+  font-size: 0.88rem;
+  color: #444;
+  margin: 0;
+  flex: 1;
+}
+
+.gs-view-run {
+  color: #2563eb;
+  cursor: pointer;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.gs-view-run:hover { text-decoration: underline; }
+
+/* Two column layout */
+.gs-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+/* Field groups */
+.gs-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.gs-label {
+  font-size: 0.78rem;
+  color: #5a7a9a;
+  font-weight: 500;
+}
+
+.gs-input,
+.gs-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #b8d4e8;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  font-family: 'Exo 2', sans-serif;
+  color: #222;
+  background: #fff;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+.gs-input:focus,
+.gs-textarea:focus { border-color: #00d4ff; }
+.gs-textarea { resize: vertical; }
+
+/* Upload */
+.gs-upload-box {
+  border: 1px solid #b8d4e8;
+  border-radius: 3px;
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  background: #fff;
+  transition: border-color 0.2s, background 0.2s;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.gs-upload-box--drag {
+  border-color: #00d4ff;
+  background: #f0fdff;
+}
+.gs-upload-box:hover { border-color: #00d4ff; }
+
+.gs-upload-icon {
+  font-size: 1.5rem;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.gs-upload-text {
+  font-size: 0.78rem;
+  color: #888;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.gs-upload-name {
+  font-size: 0.82rem;
+  color: #333;
+  margin: 0;
+}
+
+/* Generate button */
+.gs-generate-btn {
+  width: 100%;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 13px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-family: 'Exo 2', sans-serif;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-top: 4px;
+}
+.gs-generate-btn:hover    { background: #1d4ed8; }
+.gs-generate-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Status */
+.gs-status-box {
+  border: 1px solid #b8d4e8;
+  border-radius: 3px;
+  padding: 10px;
+  min-height: 50px;
+  background: #fff;
+}
+.gs-status-text {
+  font-size: 0.85rem;
+  color: #333;
+  margin: 0;
+}
+
+/* Output boxes */
+.gs-output-box {
+  border: 1px solid #b8d4e8;
+  border-radius: 3px;
+  padding: 16px;
+  min-height: 60px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.gs-output-empty-icon {
+  color: #ccc;
+  font-size: 1.1rem;
+}
+
+.gs-download-link {
+  color: #2563eb;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.gs-download-link:hover { text-decoration: underline; }

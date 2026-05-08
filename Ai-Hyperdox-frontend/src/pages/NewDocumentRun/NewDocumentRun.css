@@ -1,0 +1,202 @@
+/* src/pages/NewDocumentRun/NewDocumentRun.css */
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&display=swap');
+
+.ndr-root {
+  display: flex;
+  min-height: 100vh;
+  font-family: 'Exo 2', 'Segoe UI', sans-serif;
+  background: #fff;
+  color: #000;
+}
+
+/* ── SIDEBAR ── */
+.ndr-sidebar {
+  width: 180px;
+  min-width: 180px;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 0 24px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.ndr-logo-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  padding: 0 16px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.ndr-logo-icon {
+  width: 110px;
+  height: 110px;
+}
+
+.ndr-logo-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.ndr-back-link {
+  display: block;
+  color: #00d4ff;
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 12px 8px 8px;
+  transition: color 0.18s;
+}
+.ndr-back-link:hover { color: #fff; }
+
+/* ── Project section ── */
+.ndr-project-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  gap: 5px;
+}
+
+.ndr-project-label {
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.ndr-project-link {
+  color: #00d4ff;
+  text-decoration: none;
+  font-size: 0.78rem;
+  text-align: center;
+  transition: color 0.18s;
+}
+.ndr-project-link:hover { color: #fff; }
+.ndr-project-link--active {
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ── Nav ── */
+.ndr-nav {
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
+  flex: 1;
+}
+
+.ndr-nav-link {
+  color: #00d4ff;
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 10px 0;
+  text-align: center;
+  transition: color 0.18s;
+}
+.ndr-nav-link:hover { color: #fff; }
+
+.ndr-sidebar-footer {
+  padding: 16px 16px 0;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.ndr-signout-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #aaa;
+  font-size: 0.78rem;
+  font-family: 'Exo 2', sans-serif;
+  padding: 7px 0;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.ndr-signout-btn:hover { border-color: #00d4ff; color: #00d4ff; }
+
+/* ── MAIN ── */
+.ndr-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  min-height: 100vh;
+}
+
+.ndr-topbar {
+  padding: 18px 28px 14px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.ndr-page-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #111;
+  margin: 0;
+}
+
+/* ── CONTENT ── */
+.ndr-content {
+  padding: 40px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.ndr-subtitle {
+  font-size: 0.9rem;
+  color: #555;
+  margin: 0;
+}
+
+/* ── CARDS ── */
+.ndr-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 560px;
+}
+
+.ndr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 20px 24px;
+  background: #fff;
+  border: 2px solid #00d4ff;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font-family: 'Exo 2', sans-serif;
+  transition: background 0.2s, box-shadow 0.2s;
+  width: 100%;
+}
+
+.ndr-card:hover {
+  background: #f0fdff;
+  box-shadow: 0 0 18px rgba(0, 212, 255, 0.2);
+}
+
+.ndr-card-label {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #000;
+}
+
+.ndr-card-desc {
+  font-size: 0.78rem;
+  color: #666;
+  line-height: 1.4;
+}
