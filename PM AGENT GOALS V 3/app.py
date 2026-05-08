@@ -11,7 +11,7 @@ import threading
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, abort
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -127,34 +127,64 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
         pdfs["Resource Teams Required Document"],
     )
 
+
 # ── Flask REST API Endpoints ──
+
 @app.route("/api/predict", methods=["POST"])
 def api_predict():
     """REST API endpoint for document generation"""
     try:
         data = request.json or {}
         input_data = data.get("data", [])
-        
+
         if len(input_data) < 4:
             return jsonify({"error": "Missing required fields"}), 400
-        
+
         project_name = input_data[0] or ""
-        problem = input_data[1] or ""
-        summary = input_data[2] or ""
-        long_desc = input_data[3] or ""
-        uploads = input_data[4] if len(input_data) > 4 else []
-        
-        # Call the generate_documents function
+        problem      = input_data[1] or ""
+        summary      = input_data[2] or ""
+        long_desc    = input_data[3] or ""
+        uploads      = input_data[4] if len(input_data) > 4 else []
+
         result = generate_documents(project_name, problem, summary, long_desc, uploads or [])
-        
+
         return jsonify({"data": result}), 200
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/download", methods=["GET"])
+def download_file():
+    """Serve generated PDF files for download"""
+    path = request.args.get("path")
+
+    # Validate path is provided
+    if not path:
+        abort(400, description="Missing 'path' query parameter.")
+
+    # Security: only allow files inside /tmp/
+    if not path.startswith("/tmp/"):
+        abort(403, description="Access denied.")
+
+    # Check file exists
+    if not os.path.exists(path):
+        abort(404, description=f"File not found: {path}")
+
+    # Stream file as download
+    return send_file(
+        path,
+        as_attachment=True,
+        download_name=os.path.basename(path),
+        mimetype="application/pdf"
+    )
+
 
 @app.route("/api/health", methods=["GET"])
 def health_check():
     """Health check endpoint"""
     return jsonify({"status": "ok"}), 200
+
 
 # ── Gradio UI ──
 with gr.Blocks(title="AIPM – Monte Turner's AI Project Manager") as demo:
@@ -163,18 +193,18 @@ with gr.Blocks(title="AIPM – Monte Turner's AI Project Manager") as demo:
     with gr.Row():
         with gr.Column(scale=1):
             project_name = gr.Textbox(label="Project Name (short)", placeholder="e.g. Jocksalot Fan", lines=1)
-            problem = gr.Textbox(label="What Problem is Being Solved?", lines=3)
-            summary = gr.Textbox(label="High‑Level Summary (1–2 sentences)", lines=2)
-            long_desc = gr.Textbox(label="Longer Description / Requirements", lines=10)
-            uploads = gr.File(label="Upload Documents (PDF / DOCX / TXT)", file_count="multiple")
-            submit_btn = gr.Button("🚀 Generate Documents", variant="primary")
+            problem      = gr.Textbox(label="What Problem is Being Solved?", lines=3)
+            summary      = gr.Textbox(label="High‑Level Summary (1–2 sentences)", lines=2)
+            long_desc    = gr.Textbox(label="Longer Description / Requirements", lines=10)
+            uploads      = gr.File(label="Upload Documents (PDF / DOCX / TXT)", file_count="multiple")
+            submit_btn   = gr.Button("🚀 Generate Documents", variant="primary")
         with gr.Column(scale=1):
-            status = gr.Textbox(label="Status Message")
-            pdf_goals = gr.File(label="Goals Document (Download)")
-            pdf_scope = gr.File(label="Scope Document (Download)")
-            pdf_risk = gr.File(label="Risk Document (Download)")
+            status         = gr.Textbox(label="Status Message")
+            pdf_goals      = gr.File(label="Goals Document (Download)")
+            pdf_scope      = gr.File(label="Scope Document (Download)")
+            pdf_risk       = gr.File(label="Risk Document (Download)")
             pdf_milestones = gr.File(label="Proposed Milestones Document (Download)")
-            pdf_resources = gr.File(label="Resource Teams Required Document (Download)")
+            pdf_resources  = gr.File(label="Resource Teams Required Document (Download)")
     submit_btn.click(
         fn=generate_documents,
         inputs=[project_name, problem, summary, long_desc, uploads],
@@ -182,6 +212,7 @@ with gr.Blocks(title="AIPM – Monte Turner's AI Project Manager") as demo:
         show_progress=True
     )
     gr.HTML("<p style='text-align:center;color:gray;font-size:12px;'>© 2026 Caveman Productions Media – AIPM v1.2 Enhanced</p>")
+
 
 if __name__ == "__main__":
     # Run Gradio in a thread
@@ -193,10 +224,10 @@ if __name__ == "__main__":
             quiet=True,
             theme=gr.themes.Soft(primary_hue="blue", neutral_hue="gray")
         )
-    
+
     gradio_thread = threading.Thread(target=run_gradio, daemon=True)
     gradio_thread.start()
-    
+
     # Run Flask on the main port
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
