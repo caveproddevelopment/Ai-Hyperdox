@@ -9,7 +9,6 @@ import "./GoalsAndScope.css";
 
 const BASE_URL = import.meta.env.VITE_API_URL;
 
-// ── Load all icons from assets/projecticon ──
 const iconModules = import.meta.glob(
   '../../assets/projecticon/*',
   { eager: true, query: '?url', import: 'default' }
@@ -22,9 +21,7 @@ const PROJECT_ICONS = Object.entries(iconModules).map(([path, url]) => ({
 function resolveProjectIcon(iconValue) {
   if (!iconValue) return null;
   if (typeof iconValue !== 'string') return null;
-  if (/^https?:\/\//.test(iconValue) || iconValue.startsWith('/')) {
-    return iconValue;
-  }
+  if (/^https?:\/\//.test(iconValue) || iconValue.startsWith('/')) return iconValue;
   return PROJECT_ICONS.find(i => i.name === iconValue)?.url ?? null;
 }
 
@@ -106,7 +103,6 @@ export default function GoalsAndScope() {
       setStatus("⚠ Please enter a project name.");
       return;
     }
-
     if (!BASE_URL) {
       setStatus("❌ API configuration error. BASE_URL is not set.");
       return;
@@ -117,7 +113,8 @@ export default function GoalsAndScope() {
     setDocs(null);
 
     try {
-      const response = await fetch(`${BASE_URL}/api/predict`, {
+      // Step 1: Submit job to Gradio
+      const submitRes = await fetch(`${BASE_URL}/call/generate_documents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -126,25 +123,41 @@ export default function GoalsAndScope() {
             form.problem,
             form.summary,
             form.long_desc,
-            [],
+            null,
           ],
-          api_name: "/generate_documents",
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (!submitRes.ok) {
+        throw new Error(`Submit failed: HTTP ${submitRes.status}`);
       }
 
-      const result = await response.json();
-      if (!result.data || !Array.isArray(result.data)) {
-        throw new Error("Invalid response format from server.");
+      const { event_id } = await submitRes.json();
+      if (!event_id) throw new Error("No event_id returned from server.");
+
+      // Step 2: Poll for result via SSE
+      const resultRes = await fetch(`${BASE_URL}/call/generate_documents/${event_id}`);
+      if (!resultRes.ok) {
+        throw new Error(`Result fetch failed: HTTP ${resultRes.status}`);
       }
 
-      const [statusMsg, goals, scope, risk, milestones, resources] = result.data;
+      const text = await resultRes.text();
+
+      // Parse SSE — find last "data:" line with complete payload
+      const dataLines = text
+        .split("\n")
+        .filter(l => l.startsWith("data:"))
+        .map(l => l.replace(/^data:\s*/, "").trim())
+        .filter(Boolean);
+
+      if (!dataLines.length) throw new Error("Empty response from server.");
+
+      const parsed = JSON.parse(dataLines[dataLines.length - 1]);
+      const [statusMsg, goals, scope, risk, milestones, resources] = parsed;
 
       setStatus(statusMsg);
       setDocs({ goals, scope, risk, milestones, resources });
+
     } catch (err) {
       setStatus(`❌ Error: ${err.message || "Connection failed. Please try again."}`);
       console.error(err);
@@ -155,7 +168,9 @@ export default function GoalsAndScope() {
 
   function getDownloadUrl(fileObj) {
     if (!fileObj) return null;
-    const fileName = typeof fileObj === "string" ? fileObj : fileObj.name;
+    // Gradio 4.x returns an object with path/url/orig_name
+    const fileName = fileObj?.path ?? fileObj?.url ?? fileObj?.name ?? fileObj;
+    if (typeof fileName === "string" && fileName.startsWith("http")) return fileName;
     return `${BASE_URL}/file=${fileName}`;
   }
 
