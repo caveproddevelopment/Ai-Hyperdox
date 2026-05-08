@@ -1,0 +1,211 @@
+/* src/pages/Home/Home.css */
+/* All styles specific to the Home / Landing page */
+
+/* Pure black — no gradients */
+.app {
+  width: 100vw;
+  min-height: 100vh;
+  background: #000000;
+}
+
+/* ── HERO ───────────────────────────────────────────────────── */
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 40px 60px;
+  gap: 40px;
+  width: 100%;
+  overflow: visible;
+}
+
+/* LEFT — fixed equal half */
+.hero-left {
+  flex: 0 0 50%;
+  max-width: 50%;
+}
+.hero-left-img { width: 100%; height: auto; display: block; }
+
+/* RIGHT — fixed equal half */
+.hero-right {
+  flex: 0 0 50%;
+  max-width: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 28px;
+  padding-top: 10px;
+  overflow: visible;
+}
+
+/* ── What it does — BRACKET BOX ─────────────────────────────── */
+.what-box {
+  position: relative;
+  width: 50%;
+  overflow: visible;
+  box-shadow:
+    inset  2px  0   0 0 #e2e8f0,
+    inset  0    2px 0 0 #e2e8f0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+/* Top-right stub */
+.what-box::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 42px;
+  background: #e2e8f0;
+  display: block;
+}
+
+/* Bottom-right stub */
+.what-box::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: -217px;
+  width: 2px;
+  height: 50px;
+  background: #e2e8f0;
+  display: block;
+}
+
+.what-title {
+  text-align: center;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: #5ed0ea;
+  padding: 12px 10px;
+  letter-spacing: 0.05em;
+  width: 100%;
+  display: block;
+}
+
+/* ── List items ─────────────────────────────────────────────── */
+.what-list { list-style: none; padding: 0; margin: 0; overflow: visible; }
+
+.what-list li {
+  padding: 16px 20px;
+  line-height: 1.5;
+  border-bottom: none;
+  position: relative;
+  overflow: visible;
+}
+
+.what-list li:last-child { border-bottom: none; }
+
+/* Short partial divider */
+.what-list li::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 1px;
+  width: 130px;
+  height: 2px;
+  background: rgb(222, 218, 218);
+  display: block;
+}
+.what-list::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 170%;
+  height: 2px;
+  background: #e2e8f0;
+  display: block;
+}
+.what-list li:last-child::after { display: none; }
+
+.what-item-1 {
+  font-size: 20px;
+  color: #e2e8f0;
+  overflow: visible;
+  white-space: nowrap;
+  display: block;
+}
+
+.what-item-2 {
+  font-size: 20px;
+  color: #e2e8f0;
+  overflow: visible;
+  white-space: nowrap;
+  display: block;
+}
+
+.what-item-3 {
+  font-size: 20px;
+  color: #e2e8f0;
+  white-space: pre;
+  overflow: visible;
+  word-break: break-word;
+  display: block;
+  max-width: 150%;
+}
+
+/* ── Outcome list ───────────────────────────────────────────── */
+.outcome-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 30px;
+}
+.outcome-list p { font-size: 18px; color: #e2e8f0; font-weight: 500; }
+
+.strikethrough {
+  text-decoration: line-through !important;
+  text-decoration-color: #ef4444 !important;
+  text-decoration-thickness: 2px !important;
+  color: #fffdfd !important;
+}
+
+.underline-red {
+  text-decoration: underline !important;
+  text-decoration-color: #ef4444 !important;
+  text-decoration-thickness: 2px !important;
+  color: #e2e8f0 !important;
+}
+
+.positive { color: #ffffff !important; }
+
+/* ── CTA ────────────────────────────────────────────────────── */
+.cta-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 30px 0 50px 0;
+  background: #000000;
+}
+
+.cta-btn {
+  background: #00FFFF;
+  border: 2px solid #db110d;
+  color: #020202;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 14px 40px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.25s;
+}
+.cta-btn:hover {
+  background: rgba(24, 186, 236, 0.353);
+  box-shadow: 0 0 20px rgba(94,234,212,0.3);
+}
+
+.cta-sub {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e2e8f0;
+  text-align: center;
+  line-height: 1.6;
+}

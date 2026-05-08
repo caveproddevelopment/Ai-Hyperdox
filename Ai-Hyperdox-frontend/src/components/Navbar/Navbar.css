@@ -1,0 +1,71 @@
+/* src/components/Navbar/Navbar.css */
+
+.navbar {
+  display: flex;
+  align-items: top;
+  justify-content: space-between;
+  padding: 12px 60px;
+  border-bottom: 1px solid rgba(94,234,212,0.15);
+  background: #000000;
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+}
+
+.logo-img { width: 150px; height: 150px; object-fit: contain; border-radius: 8px; }
+
+.nav-links { display: flex; gap: 28px; }
+.nav-links a {
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.nav-links a:hover { color: #5eead4; }
+.arrow { font-size: 10px; opacity: 0.7; }
+
+.nav-auth { display: flex; align-items: flex-start; gap: 10px; }
+.auth-or { color: #475569; font-size: 14px; }
+
+/* Plain text "Sign In" */
+.sign-in {
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: 15px;
+}
+
+/* Bordered "Sign Up" */
+.sign-up {
+  color: #5ed0ea;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid rgba(94, 218, 234, 0.458);
+  padding: 7px 16px;
+  border-radius: 4px;
+  background: transparent;
+  transition: all 0.3s ease;
+
+}
+.sign-up:hover { background: rgba(94,234,212,0.1); }
+
+/* Makes <button> elements look like text links in the navbar */
+.nav-btn-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+.nav-links a.nav-link-active {
+  color: #5eead4;           /* match your existing hover color */
+    /* optional underline indicator */
+}
+
+/* Also handle Sign In / Sign Up buttons if needed */
+.nav-btn-link.nav-link-active {
+  color: #5eead4;
+}

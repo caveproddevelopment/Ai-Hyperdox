@@ -1,0 +1,64 @@
+/* src/pages/AboutUs/AboutUs.css */
+
+.about-page {
+  min-height: 100vh;
+  background-color: #000;
+  color: #fff;
+  font-family: 'Exo 2', 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ─── Content ─── */
+.about-container {
+  margin-top: 100px; /* below navbar */
+  padding: 0 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+}
+
+.about-title {
+  font-size: 1.15rem;
+  font-weight: 400;
+  color: #fff;
+  letter-spacing: 0.02em;
+  text-align: center;
+  margin: 0;
+}
+
+.about-body {
+  font-size: 0.95rem;
+  color: #ccc;
+  line-height: 1.7;
+  margin: 0;
+  text-align: center;
+}
+
+/* ─── CTA button pinned to bottom center ─── */
+.about-cta {
+  display: flex;
+  justify-content: center;
+  padding: 40px 20px 60px;
+}
+
+.about-cta-btn {
+  background: #00d4ff;
+  color: #000000;
+  border: 1.5px solid #ff0800;
+  padding: 10px 32px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  border-radius: 2px;
+  font-family: inherit;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.about-cta-btn:hover {
+  background: #00d4ff;
+  color: #000;
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.5);
+}

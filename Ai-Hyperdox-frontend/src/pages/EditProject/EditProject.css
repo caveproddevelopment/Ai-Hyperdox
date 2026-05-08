@@ -1,0 +1,341 @@
+/* src/pages/EditProject/EditProject.css */
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&display=swap');
+
+.ep-root {
+  display: flex;
+  min-height: 100vh;
+  font-family: 'Exo 2', 'Segoe UI', sans-serif;
+  background: #fff;
+  color: #000;
+}
+
+/* ── SIDEBAR ── */
+.ep-sidebar {
+  width: 180px;
+  min-width: 180px;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 0 24px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.ep-logo-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-decoration: none;
+  padding: 0 16px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.ep-logo-icon {
+  width: 110px;
+  height: 110px;
+}
+
+.ep-logo-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.ep-back-sidebar {
+  display: block;
+  color: #00d4ff;
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 12px 8px 4px;
+}
+
+.ep-back-sidebar:hover { color: #fff; }
+
+/* ── Project section in sidebar ── */
+.ep-project-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  gap: 4px;
+}
+
+.ep-project-label {
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.ep-project-link {
+  color: #00d4ff;
+  text-decoration: none;
+  font-size: 0.78rem;
+  text-align: center;
+  transition: color 0.18s;
+}
+
+.ep-project-link:hover { color: #fff; }
+
+.ep-nav {
+  display: flex;
+  flex-direction: column;
+  margin-top: 12px;
+  flex: 1;
+}
+
+.ep-nav-link {
+  color: #00d4ff;
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 10px 0;
+  text-align: center;
+  transition: color 0.18s;
+}
+
+.ep-nav-link:hover { color: #fff; }
+
+.ep-sidebar-footer {
+  padding: 16px 16px 0;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.ep-signout-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #aaa;
+  font-size: 0.78rem;
+  font-family: 'Exo 2', sans-serif;
+  padding: 7px 0;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.ep-signout-btn:hover { border-color: #00d4ff; color: #00d4ff; }
+
+/* ── MAIN ── */
+.ep-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+.ep-topbar {
+  padding: 18px 28px 14px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.ep-page-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #111;
+  margin: 0;
+}
+
+/* ── FORM ── */
+.ep-form-wrap {
+  padding: 28px 40px;
+  max-width: 860px;
+}
+
+.ep-error {
+  background: #fff0f0;
+  border: 1px solid #ffcccc;
+  color: #cc0000;
+  padding: 8px 14px;
+  border-radius: 3px;
+  font-size: 0.82rem;
+  margin-bottom: 16px;
+}
+
+.ep-success {
+  background: #f0fff4;
+  border: 1px solid #b2f5c8;
+  color: #1a7f37;
+  padding: 8px 14px;
+  border-radius: 3px;
+  font-size: 0.82rem;
+  margin-bottom: 16px;
+}
+
+.ep-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.ep-field--top { align-items: flex-start; }
+
+.ep-label {
+  width: 160px;
+  min-width: 160px;
+  font-size: 0.88rem;
+  color: #333;
+  text-align: right;
+}
+
+.ep-input-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.ep-input {
+  flex: 1;
+  max-width: 520px;
+  height: 34px;
+  border: 1px solid #bbb;
+  border-radius: 2px;
+  padding: 0 10px;
+  font-size: 0.88rem;
+  font-family: 'Exo 2', sans-serif;
+  color: #111;
+  outline: none;
+  transition: border-color 0.18s;
+}
+.ep-input:focus { border-color: #00d4ff; }
+
+.ep-required {
+  font-size: 0.78rem;
+  color: #888;
+}
+
+.ep-textarea {
+  flex: 1;
+  max-width: 520px;
+  border: 1px solid #bbb;
+  border-radius: 2px;
+  padding: 8px 10px;
+  font-size: 0.88rem;
+  font-family: 'Exo 2', sans-serif;
+  color: #111;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.18s;
+}
+.ep-textarea:focus { border-color: #00d4ff; }
+
+/* ── Icon row ── */
+.ep-icon-row { gap: 20px; }
+
+.ep-icon-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ep-icon-preview {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border: 1px solid #ddd;
+}
+
+.ep-change-btn {
+  background: none;
+  border: none;
+  color: #00d4ff;
+  font-size: 0.88rem;
+  font-family: 'Exo 2', sans-serif;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+.ep-change-btn:hover { opacity: 0.7; }
+
+.ep-save-btn {
+  background: #00d4ff;
+  color: #000;
+  border: 2px solid #e53935;
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-family: 'Exo 2', sans-serif;
+  padding: 8px 32px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 0.18s, box-shadow 0.18s;
+  align-self: center;
+  margin-left: auto;
+}
+.ep-save-btn:hover { background: #00bcd4; box-shadow: 0 0 12px rgba(0,212,255,0.4); }
+.ep-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── MODAL ── */
+.ep-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.ep-modal {
+  background: #fff;
+  border-radius: 6px;
+  width: 480px;
+  max-width: 94vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ep-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #eee;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.ep-modal-close {
+  background: none;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  color: #555;
+}
+.ep-modal-close:hover { color: #000; }
+
+.ep-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.ep-icon-option {
+  border: 2px solid transparent;
+  border-radius: 4px;
+  padding: 4px;
+  background: #f5f5f5;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.ep-icon-option:hover { border-color: #00d4ff; }
+.ep-icon-option--selected { border-color: #00d4ff; background: #e0f7fa; }
+
+.ep-icon-option img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+  border-radius: 2px;
+}

@@ -1,0 +1,209 @@
+/* src/pages/ContactUs/ContactUs.css */
+
+/* ─── Reuses the same base variables & layout as SignUp ─── */
+
+.auth-page {
+  min-height: 100vh;
+  background-color: #000;
+  color: #fff;
+  font-family: 'Exo 2', 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding-bottom: 60px;
+}
+
+/* ─── Logo ─── */
+.auth-logo {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+}
+.auth-logo img {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  border: 1px solid #444;
+  border-radius: 4px;
+}
+
+/* ─── Card ─── */
+.auth-card {
+  margin-top: 100px;
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 20px;
+}
+
+/* ─── Headline ─── */
+.auth-headline {
+  font-size: 1.15rem;
+  font-weight: 400;
+  color: #fff;
+  margin-bottom: 28px;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+/* ─── Form ─── */
+.auth-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ─── Field row ─── */
+.auth-field {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.auth-field label {
+  text-align: right;
+  font-size: 0.92rem;
+  color: #ccc;
+  white-space: nowrap;
+  padding-top: 6px;
+}
+
+/* Textarea row — label aligns to top */
+.auth-field--textarea label {
+  padding-top: 6px;
+  align-self: flex-start;
+}
+
+/* ─── Input wrapper ─── */
+.input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.input-wrapper input,
+.input-wrapper textarea {
+  background: #fff;
+  color: #000;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  padding: 6px 10px;
+  font-size: 0.92rem;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.input-wrapper input {
+  height: 30px;
+}
+
+.input-wrapper textarea {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.5;
+}
+
+.input-wrapper input:focus,
+.input-wrapper textarea:focus {
+  border-color: #00d4ff;
+  box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+}
+
+.input-wrapper input.input-error,
+.input-wrapper textarea.input-error {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+/* ─── Per-field error text ─── */
+.field-error {
+  font-size: 0.78rem;
+  color: #ff6b6b;
+  margin-top: 2px;
+}
+
+/* ─── Submit button ─── */
+.auth-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.auth-btn-primary {
+  background: transparent;
+  color: #00d4ff;
+  border: 1.5px solid #00d4ff;
+  padding: 8px 28px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-radius: 2px;
+  font-family: inherit;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.auth-btn-primary:hover:not(:disabled) {
+  background: #00d4ff;
+  color: #000;
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.5);
+}
+.auth-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Success state ─── */
+.contact-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 40px;
+  text-align: center;
+  animation: fadeIn 0.4s ease;
+}
+
+.contact-success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border: 2px solid #00d4ff;
+  border-radius: 50%;
+  color: #00d4ff;
+  font-size: 1.6rem;
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+}
+
+.contact-success p {
+  color: #ccc;
+  font-size: 0.95rem;
+  max-width: 320px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 640px) {
+  .auth-field {
+    grid-template-columns: 1fr;
+  }
+  .auth-field label {
+    text-align: left;
+    font-size: 0.85rem;
+    padding-top: 0;
+  }
+  .auth-card { margin-top: 110px; }
+}

@@ -1,0 +1,289 @@
+/* src/pages/SignUp/SignUp.css */
+
+.auth-page {
+  min-height: 100vh;
+  background-color: #000;
+  color: #fff;
+  font-family: 'Exo 2', 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding-bottom: 60px;
+}
+
+/* ─── Logo ─── */
+.auth-logo {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+}
+.auth-logo img {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  border: 1px solid #444;
+  border-radius: 4px;
+}
+
+/* ─── Card ─── */
+.auth-card {
+  margin-top: 80px;
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 20px;
+}
+
+/* ─── Headline ─── */
+.auth-headline {
+  font-size: 1.15rem;
+  font-weight: 400;
+  color: #fff;
+  margin-bottom: 28px;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+/* ─── Global error banner ─── */
+.auth-error {
+  background: rgba(255, 50, 50, 0.15);
+  border: 1px solid rgba(255, 80, 80, 0.5);
+  color: #ff6b6b;
+  padding: 10px 20px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-size: 0.88rem;
+  text-align: center;
+  width: 100%;
+}
+
+/* ─── Form ─── */
+.auth-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-section-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #555;
+  margin-top: 8px;
+  margin-bottom: -4px;
+}
+
+/* ─── Field row ─── */
+.auth-field {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.auth-field label {
+  text-align: right;
+  font-size: 0.92rem;
+  color: #ccc;
+  white-space: nowrap;
+  padding-top: 6px; /* align with input */
+}
+
+/* ─── Input wrapper (holds input + errors + rules) ─── */
+.input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.input-wrapper input {
+  background: #fff;
+  color: #000;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  padding: 6px 10px;
+  font-size: 0.92rem;
+  outline: none;
+  height: 30px;
+  width: 100%;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-wrapper input:focus {
+  border-color: #00d4ff;
+  box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+}
+
+.input-wrapper input.input-error {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+/* ─── Per-field error text ─── */
+.field-error {
+  font-size: 0.78rem;
+  color: #ff6b6b;
+  margin-top: 2px;
+}
+
+/* ─── Password row (input + eye button) ─── */
+.password-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.password-input-row input {
+  flex: 1;
+}
+
+.toggle-pw {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0 4px;
+  color: #aaa;
+  line-height: 1;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+.toggle-pw:hover { opacity: 0.7; }
+
+/* ─── Password strength bar ─── */
+.pw-strength {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.pw-strength-bar {
+  flex: 1;
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.pw-strength-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.pw-strength-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 44px;
+}
+
+/* ─── Password rules checklist ─── */
+.pw-rules {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pw-rules li {
+  font-size: 0.76rem;
+}
+
+.rule-ok   { color: #22c55e; }
+.rule-fail { color: #ef4444; }
+
+/* ─── Divider ─── */
+.auth-divider {
+  text-align: center;
+  color: #888;
+  font-size: 0.9rem;
+  margin: 6px 0 0;
+}
+
+/* ─── Google button ─── */
+.google-btn-wrapper {
+  display: flex;
+  justify-content: center;
+}
+
+.google-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  color: #333;
+  border: 1px solid #ddd;
+  padding: 9px 28px;
+  border-radius: 4px;
+  font-size: 0.92rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: box-shadow 0.2s, background 0.2s;
+}
+.google-btn img { width: 18px; height: 18px; }
+.google-btn:hover:not(:disabled) {
+  background: #f5f5f5;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+}
+.google-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ─── Submit button ─── */
+.auth-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.auth-btn-primary {
+  background: transparent;
+  color: #00d4ff;
+  border: 1.5px solid #00d4ff;
+  padding: 8px 28px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.auth-btn-primary:hover:not(:disabled) {
+  background: #00d4ff;
+  color: #000;
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.5);
+}
+.auth-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ─── Footer link ─── */
+.auth-footer-link {
+  margin-top: 16px;
+  font-size: 0.88rem;
+  color: #888;
+  text-align: center;
+}
+
+.auth-link {
+  color: #00d4ff;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+.auth-link:hover { opacity: 0.75; text-decoration: underline; }
+
+/* ─── Responsive ─── */
+@media (max-width: 640px) {
+  .auth-field {
+    grid-template-columns: 1fr;
+  }
+  .auth-field label {
+    text-align: left;
+    font-size: 0.85rem;
+    padding-top: 0;
+  }
+  .auth-card { margin-top: 110px; }
+}

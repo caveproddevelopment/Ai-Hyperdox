@@ -1,0 +1,19 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, #root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+body {
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: clip;        /* ← only on body, not html */
+  background-color: #000000;
+  color: #e2e8f0;
+  font-family: 'Exo 2', sans-serif;
+}

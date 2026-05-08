@@ -1,0 +1,137 @@
+/* src/pages/ConfirmRegistration/ConfirmRegistration.css */
+
+.confirm-page {
+  min-height: 100vh;
+  background-color: #000;
+  color: #fff;
+  font-family: 'Exo 2', 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  position: relative;
+  padding-bottom: 60px;
+}
+
+/* ─── Logo top-left ─── */
+.confirm-logo {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+}
+
+.confirm-logo img {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  border: 1px solid #444;
+  border-radius: 4px;
+}
+
+/* ─── Main Content ─── */
+.confirm-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 120px;
+  gap: 6px;
+  text-align: center;
+  padding: 0 20px;
+}
+
+.confirm-sweet {
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: #fff;
+  margin: 0;
+}
+
+.confirm-msg {
+  font-size: 1rem;
+  color: #ccc;
+  line-height: 1.7;
+  margin: 0 0 28px;
+}
+
+.confirm-meanwhile {
+  font-size: 0.95rem;
+  color: #aaa;
+  margin: 0 0 16px;
+}
+
+.confirm-see-how {
+  color: #00d4ff;
+  text-decoration: underline;
+  font-size: 0.95rem;
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-family: inherit;
+  transition: opacity 0.2s;
+}
+
+.confirm-see-how:hover {
+  opacity: 0.7;
+}
+
+.confirm-or {
+  font-size: 0.9rem;
+  color: #555;
+  margin: 16px 0;
+}
+
+.confirm-explore-label {
+  font-size: 0.95rem;
+  color: #ccc;
+  margin: 0 0 14px;
+}
+
+/* ─── Sign In Prompt ─── */
+.confirm-signin-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 24px;
+  color: #aaa;
+  font-size: 0.92rem;
+}
+
+.confirm-signin-btn {
+  background: transparent;
+  color: #00d4ff;
+  border: 1.5px solid #00d4ff;
+  padding: 9px 28px;
+  border-radius: 2px;
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.confirm-signin-btn:hover {
+  background: #00d4ff;
+  color: #000;
+  box-shadow: 0 0 16px rgba(0, 212, 255, 0.4);
+}
+
+/* ─── Agent Links ─── */
+.confirm-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.confirm-link {
+  color: #00d4ff;
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: opacity 0.2s;
+}
+
+.confirm-link:hover {
+  opacity: 0.7;
+  text-decoration: underline;
+}
