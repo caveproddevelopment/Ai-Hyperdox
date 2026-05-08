@@ -126,8 +126,9 @@ export default function GoalsAndScope() {
             form.problem,
             form.summary,
             form.long_desc,
-            null,
+            [],
           ],
+          api_name: "/generate_documents",
         }),
       });
 
