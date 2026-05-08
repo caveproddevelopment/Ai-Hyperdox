@@ -151,12 +151,20 @@ export default function GoalsAndScope() {
   }
 
   function getDownloadUrl(fileObj) {
-    if (!fileObj) return null;
-    // Gradio 4.x returns an object with path/url/orig_name
-    const fileName = fileObj?.path ?? fileObj?.url ?? fileObj?.name ?? fileObj;
-    if (typeof fileName === "string" && fileName.startsWith("http")) return fileName;
-    return `${BASE_URL}/file=${fileName}`;
+  if (!fileObj) return null;
+  
+  // Already a full URL
+  if (typeof fileObj === "string" && fileObj.startsWith("http")) return fileObj;
+  
+  // Server path like /tmp/filename.pdf  ← YOUR CASE
+  if (typeof fileObj === "string") {
+    return `${BASE_URL}/file=${fileObj}`;
   }
+  
+  // Gradio object fallback
+  const filePath = fileObj?.path ?? fileObj?.url ?? fileObj?.name;
+  return `${BASE_URL}/file=${filePath}`;
+}
 
   return (
     <div className="ndr-root">
