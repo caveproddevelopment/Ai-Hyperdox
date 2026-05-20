@@ -1,17 +1,17 @@
 // src/pages/ForgotPassword/ForgotPassword.jsx
 import { useState }            from "react";
-import { useNavigate, Link }   from "react-router-dom";
-import { useAuth }             from "../../context/AuthContext";  // ← use context
+import { Link }                from "react-router-dom";
+import { useAuth }             from "../../context/AuthContext";
 import Navbar                  from "../../components/Navbar/Navbar";
 import "./ForgotPassword.css";
 
 export default function ForgotPassword() {
   const [email,   setEmail]   = useState("");
   const [error,   setError]   = useState("");
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const navigate             = useNavigate();
-  const { sendPasswordReset } = useAuth();              // ← branded reset
+  const { sendPasswordReset } = useAuth();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -21,11 +21,12 @@ export default function ForgotPassword() {
 
     try {
       setLoading(true);
-
-      // 🔑 Calls Cloud Function → GAS → your branded Gmail template
       await sendPasswordReset(email.trim());
 
-      navigate("/reset-password");
+      // ✅ Show success — do NOT navigate
+      // User must click the link in their email to reach /reset-password
+      setSuccess(true);
+
     } catch (err) {
       if (
         err.code === "auth/user-not-found" ||
@@ -40,6 +41,38 @@ export default function ForgotPassword() {
     }
   }
 
+  // ── Success state — email sent ───────────────────────────────
+  if (success) {
+    return (
+      <div className="forgot-page">
+        <Navbar />
+        <div className="forgot-card">
+          <div className="forgot-success-icon">✉️</div>
+          <h1 className="forgot-headline">Check Your Email</h1>
+          <p className="forgot-subtext">
+            We sent a password reset link to <strong>{email}</strong>.
+            Click the link in that email to set your new password.
+          </p>
+          <p className="forgot-subtext" style={{ marginTop: "10px", fontSize: "13px", opacity: 0.6 }}>
+            Didn't receive it? Check your spam folder, or{" "}
+            <button
+              className="forgot-link"
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              onClick={() => setSuccess(false)}
+            >
+              try again
+            </button>
+            .
+          </p>
+          <div className="forgot-footer" style={{ marginTop: "24px" }}>
+            <Link to="/signin" className="forgot-link">← Back to Sign In</Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Default state — email form ───────────────────────────────
   return (
     <div className="forgot-page">
       <Navbar />
@@ -47,7 +80,7 @@ export default function ForgotPassword() {
       <div className="forgot-card">
         <h1 className="forgot-headline">Reset Your Password</h1>
         <p className="forgot-subtext">
-          Enter the email linked to your account and we&apos;ll send you a reset link.
+          Enter the email linked to your account and we'll send you a reset link.
         </p>
 
         {error && <div className="forgot-error">{error}</div>}
@@ -83,7 +116,7 @@ export default function ForgotPassword() {
             <Link to="/signin" className="forgot-link">Back to Sign In</Link>
           </p>
           <p>
-            Don&apos;t have an account?{" "}
+            Don't have an account?{" "}
             <Link to="/signup" className="forgot-link">Need to Register?</Link>
           </p>
         </div>
