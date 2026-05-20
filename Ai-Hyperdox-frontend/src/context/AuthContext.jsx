@@ -87,8 +87,20 @@ export function AuthProvider({ children }) {
   }
 
   async function sendPasswordReset(email, name = "") {
-    const sendReset = httpsCallable(functions, "sendPasswordResetEmail");
-    return sendReset({ email, name });
+    // Use public HTTP fallback endpoint (sendPasswordResetEmailHttp)
+    const url = "https://us-central1-ai-hyperdox.cloudfunctions.net/sendPasswordResetEmailHttp";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, name }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return data;
+    // Map HTTP errors to codes similar to Firebase errors for existing handlers
+    if (res.status === 404) throw { code: "auth/user-not-found", message: data.error || "No account found" };
+    if (res.status === 400) throw { code: "auth/invalid-email", message: data.error || "Invalid email" };
+    if (res.status === 429) throw { code: "auth/too-many-requests", message: data.error || "Too many requests" };
+    throw { code: "functions/internal", message: data.error || "Failed to send reset link" };
   }
 
   async function resendVerificationEmail(name = "") {

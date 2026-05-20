@@ -55,6 +55,7 @@ exports.sendVerificationEmail = onCall(
 //  sendPasswordResetEmail — sends custom 5-min token link
 // ════════════════════════════════════════════════════════════════
 
+// keep the callable for compatibility; also provide a public HTTP fallback
 exports.sendPasswordResetEmail = onCall(
   { cors: true, invoker: ["public"] },
   async (request) => {
@@ -62,10 +63,7 @@ exports.sendPasswordResetEmail = onCall(
     if (!email) throw new HttpsError("invalid-argument", "email is required");
 
     try {
-      // Generate the real Firebase reset link
       const firebaseLink = await getAuth().generatePasswordResetLink(email);
-
-      // Store token with 5-min expiry in Firestore
       const token = generateToken();
       await db.collection("passwordResets").doc(token).set({
         email,
@@ -74,15 +72,11 @@ exports.sendPasswordResetEmail = onCall(
         expiresAt: Date.now() + EXPIRY_MS,
         used:      false,
       });
-
-      // Send custom link — NOT the Firebase link directly
       const customLink = `${SITE_URL}/reset-password?token=${token}`;
       await callGAS({ type: "reset", email, link: customLink, name: name || "" });
-
       return { success: true };
     } catch (err) {
       console.error("sendPasswordResetEmail error:", err);
-
       if (err.code === "auth/user-not-found") {
         throw new HttpsError("not-found", "No account found with that email address.");
       }
@@ -95,8 +89,38 @@ exports.sendPasswordResetEmail = onCall(
       if (err.message?.includes("GAS responded")) {
         throw new HttpsError("unavailable", "Email service temporarily unavailable.");
       }
-
       throw new HttpsError("internal", err.message || "Unable to send reset email. Please try again later.");
+    }
+  }
+);
+
+// HTTP public fallback — accepts POST { email, name }
+exports.sendPasswordResetEmailHttp = onRequest(
+  { cors: true, invoker: ["public"] },
+  async (req, res) => {
+    if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+    const { email, name } = req.body || {};
+    if (!email) return res.status(400).json({ error: "email is required" });
+    try {
+      const firebaseLink = await getAuth().generatePasswordResetLink(email);
+      const token = generateToken();
+      await db.collection("passwordResets").doc(token).set({
+        email,
+        link:      firebaseLink,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + EXPIRY_MS,
+        used:      false,
+      });
+      const customLink = `${SITE_URL}/reset-password?token=${token}`;
+      await callGAS({ type: "reset", email, link: customLink, name: name || "" });
+      return res.json({ success: true });
+    } catch (err) {
+      console.error("sendPasswordResetEmailHttp error:", err);
+      if (err.code === "auth/user-not-found") return res.status(404).json({ error: "No account found with that email address." });
+      if (err.code === "auth/invalid-email") return res.status(400).json({ error: "Invalid email address." });
+      if (err.code === "auth/too-many-requests") return res.status(429).json({ error: "Too many requests. Please try again later." });
+      if (err.message?.includes("GAS responded")) return res.status(503).json({ error: "Email service temporarily unavailable." });
+      return res.status(500).json({ error: err.message || "Unable to send reset email." });
     }
   }
 );
