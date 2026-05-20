@@ -61,24 +61,43 @@ exports.sendPasswordResetEmail = onCall(
     const { email, name } = request.data;
     if (!email) throw new HttpsError("invalid-argument", "email is required");
 
-    // Generate the real Firebase reset link
-    const firebaseLink = await getAuth().generatePasswordResetLink(email);
+    try {
+      // Generate the real Firebase reset link
+      const firebaseLink = await getAuth().generatePasswordResetLink(email);
 
-    // Store token with 5-min expiry in Firestore
-    const token = generateToken();
-    await db.collection("passwordResets").doc(token).set({
-      email,
-      link:      firebaseLink,
-      createdAt: Date.now(),
-      expiresAt: Date.now() + EXPIRY_MS,
-      used:      false,
-    });
+      // Store token with 5-min expiry in Firestore
+      const token = generateToken();
+      await db.collection("passwordResets").doc(token).set({
+        email,
+        link:      firebaseLink,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + EXPIRY_MS,
+        used:      false,
+      });
 
-    // Send custom link — NOT the Firebase link directly
-    const customLink = `${SITE_URL}/reset-password?token=${token}`;
-    await callGAS({ type: "reset", email, link: customLink, name: name || "" });
+      // Send custom link — NOT the Firebase link directly
+      const customLink = `${SITE_URL}/reset-password?token=${token}`;
+      await callGAS({ type: "reset", email, link: customLink, name: name || "" });
 
-    return { success: true };
+      return { success: true };
+    } catch (err) {
+      console.error("sendPasswordResetEmail error:", err);
+
+      if (err.code === "auth/user-not-found") {
+        throw new HttpsError("not-found", "No account found with that email address.");
+      }
+      if (err.code === "auth/invalid-email") {
+        throw new HttpsError("invalid-argument", "Invalid email address.");
+      }
+      if (err.code === "auth/too-many-requests") {
+        throw new HttpsError("resource-exhausted", "Too many requests. Please try again later.");
+      }
+      if (err.message?.includes("GAS responded")) {
+        throw new HttpsError("unavailable", "Email service temporarily unavailable.");
+      }
+
+      throw new HttpsError("internal", err.message || "Unable to send reset email. Please try again later.");
+    }
   }
 );
 

@@ -28,13 +28,14 @@ export default function ForgotPassword() {
       setSuccess(true);
 
     } catch (err) {
+      console.error("sendPasswordReset error:", err);
       if (
         err.code === "auth/user-not-found" ||
         err.code === "auth/invalid-email"
       ) {
         setError("No account found with that email address.");
       } else {
-        setError("Failed to send reset link. Please try again.");
+        setError(err.message || "Failed to send reset link. Please try again.");
       }
     } finally {
       setLoading(false);
