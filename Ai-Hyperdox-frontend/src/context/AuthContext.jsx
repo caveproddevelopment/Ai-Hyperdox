@@ -25,20 +25,31 @@ export function AuthProvider({ children }) {
 
   async function register(email, password, name = "") {
     console.log("🔥 register() called — NEW VERSION");
+
+    // Step 1 — Create the Firebase Auth user
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user           = userCredential.user;
 
+    // Step 2 — Write Firestore user doc
     await setDoc(doc(db, "users", user.uid), {
-      fullName:  name,
-      email:     email,
-      company:   "",
-      industry:  "",
-      createdAt: new Date().toISOString(),
-      provider:  "email",
+      fullName:          name,
+      email:             email,
+      company:           "",
+      industry:          "",
+      createdAt:         new Date().toISOString(),
+      provider:          "email",
+      freeRunsRemaining: 3,
+      totalRunsUsed:     0,
     });
 
-    const sendVerification = httpsCallable(functions, "sendVerificationEmail");
-    await sendVerification({ uid: user.uid, name });
+    // Step 3 — Send verification email (wrapped so it never blocks registration)
+    try {
+      const sendVerification = httpsCallable(functions, "sendVerificationEmail");
+      await sendVerification({ uid: user.uid, name });
+    } catch (emailErr) {
+      // Log but don't throw — user is created, email just didn't send
+      console.warn("⚠️ Verification email failed to send:", emailErr.message);
+    }
 
     return userCredential;
   }
@@ -61,12 +72,14 @@ export function AuthProvider({ children }) {
 
     if (!userSnap.exists()) {
       await setDoc(userRef, {
-        fullName:  user.displayName || "",
-        email:     user.email       || "",
-        company:   "",
-        industry:  "",
-        createdAt: new Date().toISOString(),
-        provider:  "google",
+        fullName:          user.displayName || "",
+        email:             user.email       || "",
+        company:           "",
+        industry:          "",
+        createdAt:         new Date().toISOString(),
+        provider:          "google",
+        freeRunsRemaining: 3,
+        totalRunsUsed:     0,
       });
     }
 

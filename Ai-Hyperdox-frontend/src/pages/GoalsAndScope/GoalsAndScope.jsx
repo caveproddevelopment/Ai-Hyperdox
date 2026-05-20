@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { db } from "../../firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { db, functions } from "../../firebase";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import logo from '../../assets/AI Hyperdox Logo Square V2.png';
 import GoalsScopeIcon from '../../assets/Documenticon/GoalsscopeIcon.png';
 import "./GoalsAndScope.css";
@@ -109,9 +110,33 @@ export default function GoalsAndScope() {
     }
 
     setLoading(true);
-    setStatus("Generating documents...");
     setDocs(null);
 
+    // ── STEP 1: Billing check — deduct free run or charge card ──────────
+    try {
+      setStatus("Checking billing...");
+      const initiateRun = httpsCallable(functions, "initiateRun");
+      const billingResult = await initiateRun({
+        projectId,
+        docType: "goals-scope",
+      });
+
+      // Show user whether it was free or charged
+      if (billingResult.data.status === "free") {
+        setStatus(
+          `✅ Free run used. ${billingResult.data.freeRunsRemaining} free run(s) remaining. Generating documents...`
+        );
+      } else {
+        setStatus("💳 $10 charged successfully. Generating documents...");
+      }
+    } catch (err) {
+      // Billing failed — stop here, don't call the API
+      setStatus(`❌ Billing error: ${err.message}`);
+      setLoading(false);
+      return;
+    }
+
+    // ── STEP 2: Call the document generation API ─────────────────────────
     try {
       console.log("Calling:", `${BASE_URL}/api/predict`);
       const response = await fetch(`${BASE_URL}/api/predict`, {
@@ -142,6 +167,17 @@ export default function GoalsAndScope() {
       setStatus(statusMsg);
       setDocs({ goals, scope, risk, milestones, resources });
 
+      // ── STEP 3: Save last run date to the project doc ──────────────────
+      const runDate = new Date().toLocaleDateString("en-US", {
+        year:  "numeric",
+        month: "long",
+        day:   "numeric",
+      });
+      setLastRunDate(runDate);
+      await updateDoc(doc(db, "projects", projectId), {
+        lastGoalsScopeRun: runDate,
+      });
+
     } catch (err) {
       setStatus(`❌ Error: ${err.message || "Connection failed. Please try again."}`);
       console.error(err);
@@ -151,17 +187,14 @@ export default function GoalsAndScope() {
   }
 
   function getDownloadUrl(fileObj) {
-  if (!fileObj) return null;
-  if (typeof fileObj === "string" && fileObj.startsWith("http")) return fileObj;
-  
-  // Use your new /download endpoint
-  if (typeof fileObj === "string") {
-    return `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
+    if (!fileObj) return null;
+    if (typeof fileObj === "string" && fileObj.startsWith("http")) return fileObj;
+    if (typeof fileObj === "string") {
+      return `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
+    }
+    const filePath = fileObj?.path ?? fileObj?.url ?? fileObj?.name;
+    return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
   }
-
-  const filePath = fileObj?.path ?? fileObj?.url ?? fileObj?.name;
-  return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
-}
 
   return (
     <div className="ndr-root">

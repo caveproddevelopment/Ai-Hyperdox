@@ -16,6 +16,7 @@ import "./App.css";
 import EditProject from "./pages/EditProject/EditProject";
 import GoalsAndScope from "./pages/GoalsAndScope/GoalsAndScope";
 import NewDocumentRun from "./pages/NewDocumentRun/NewDocumentRun";
+import BillingSettings from "./pages/BillingSettings/BillingSettings";
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/project/:projectId/edit" element={<EditProject />} />
         <Route path="/project/:projectId/run" element={<NewDocumentRun />} />
         <Route path="/project/:projectId/run/goals-scope" element={<GoalsAndScope />} />
+        <Route path="/billing"              element={<BillingSettings />} />
       </Routes>
       </AuthProvider>
     </BrowserRouter>

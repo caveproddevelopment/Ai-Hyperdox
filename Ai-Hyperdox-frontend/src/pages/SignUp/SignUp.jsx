@@ -95,11 +95,15 @@ export default function SignUp() {
       }));
       navigate("/confirm-registration");
     } catch (err) {
+      console.error("Registration error:", err);
       if (err.code === "auth/email-already-in-use")
         setError("This email is already registered. Please sign in.");
       else if (err.code === "auth/invalid-email")
         setError("Invalid email address.");
-      else setError("Registration failed. Please try again.");
+      else if (err.code === "auth/operation-not-allowed")
+        setError("Email/password sign-in is disabled in Firebase. Enable it in the Firebase Console.");
+      else
+        setError(err.message || "Registration failed. Please try again.");
     } finally {
       setLoading(false);
     }
