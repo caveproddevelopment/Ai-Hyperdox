@@ -1,4 +1,4 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp }      = require("firebase-admin/app");
 const { getAuth }            = require("firebase-admin/auth");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
@@ -32,7 +32,7 @@ function generateToken() {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  sendVerificationEmail — unchanged, sends Firebase link directly
+//  sendVerificationEmail — uses Firebase default verification page
 // ════════════════════════════════════════════════════════════════
 
 exports.sendVerificationEmail = onCall(
@@ -44,7 +44,17 @@ exports.sendVerificationEmail = onCall(
     const user = await getAuth().getUser(uid);
     if (user.emailVerified) return { success: true, message: "Already verified" };
 
-    const link = await getAuth().generateEmailVerificationLink(user.email);
+    // Force Firebase's own verification page (not the custom site action handler)
+    const actionCodeSettings = {
+      url:            "https://ai-hyperdox.firebaseapp.com/__/auth/action",
+      handleCodeInApp: false,
+    };
+
+    const link = await getAuth().generateEmailVerificationLink(
+      user.email,
+      actionCodeSettings
+    );
+
     await callGAS({ type: "verification", email: user.email, link, name: name || "" });
 
     return { success: true };
@@ -55,7 +65,6 @@ exports.sendVerificationEmail = onCall(
 //  sendPasswordResetEmail — sends custom 5-min token link
 // ════════════════════════════════════════════════════════════════
 
-// keep the callable for compatibility; also provide a public HTTP fallback
 exports.sendPasswordResetEmail = onCall(
   { cors: true, invoker: ["public"] },
   async (request) => {
@@ -117,7 +126,7 @@ exports.sendPasswordResetEmailHttp = onRequest(
     } catch (err) {
       console.error("sendPasswordResetEmailHttp error:", err);
       if (err.code === "auth/user-not-found") return res.status(404).json({ error: "No account found with that email address." });
-      if (err.code === "auth/invalid-email") return res.status(400).json({ error: "Invalid email address." });
+      if (err.code === "auth/invalid-email")   return res.status(400).json({ error: "Invalid email address." });
       if (err.code === "auth/too-many-requests") return res.status(429).json({ error: "Too many requests. Please try again later." });
       if (err.message?.includes("GAS responded")) return res.status(503).json({ error: "Email service temporarily unavailable." });
       return res.status(500).json({ error: err.message || "Unable to send reset email." });
@@ -303,4 +312,4 @@ exports.initiateRun = onCall(
   }
 );
 
-// v6
+// v7
