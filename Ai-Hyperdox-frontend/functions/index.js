@@ -36,7 +36,7 @@ function generateToken() {
 // ════════════════════════════════════════════════════════════════
 
 exports.sendVerificationEmail = onCall(
-  { cors: true, invoker: "public" },
+  { cors: true, invoker: ["public"] },
   async (request) => {
     const { uid, name } = request.data;
     if (!uid) throw new HttpsError("invalid-argument", "uid is required");
@@ -56,7 +56,7 @@ exports.sendVerificationEmail = onCall(
 // ════════════════════════════════════════════════════════════════
 
 exports.sendPasswordResetEmail = onCall(
-  { cors: true, invoker: "public" },
+  { cors: true, invoker: ["public"] },
   async (request) => {
     const { email, name } = request.data;
     if (!email) throw new HttpsError("invalid-argument", "email is required");
@@ -106,7 +106,7 @@ exports.sendPasswordResetEmail = onCall(
 // ════════════════════════════════════════════════════════════════
 
 exports.validateResetToken = onCall(
-  { cors: true, invoker: "public" },
+  { cors: true, invoker: ["public"] },
   async (request) => {
     const { token } = request.data;
     if (!token) throw new HttpsError("invalid-argument", "token is required");
@@ -138,7 +138,7 @@ exports.validateResetToken = onCall(
 // ════════════════════════════════════════════════════════════════
 
 exports.savePaymentMethod = onCall(
-  { cors: true, invoker: "public", secrets: [stripeSecret] },
+  { cors: true, invoker: ["public"], secrets: [stripeSecret] },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "You must be signed in.");
@@ -194,7 +194,7 @@ exports.savePaymentMethod = onCall(
 // ════════════════════════════════════════════════════════════════
 
 exports.initiateRun = onCall(
-  { cors: true, invoker: "public", secrets: [stripeSecret] },
+  { cors: true, invoker: ["public"], secrets: [stripeSecret] },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "You must be signed in.");
