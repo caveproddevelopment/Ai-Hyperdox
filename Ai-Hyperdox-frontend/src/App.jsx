@@ -41,7 +41,7 @@ export default function App() {
         <Route path="/project/:projectId/run/goals-scope" element={<GoalsAndScope />} />
         <Route path="/billing"              element={<BillingSettings />} />
         <Route path="/project/:projectId/library" element={<ProjectLibrary />} />
-        <Route path="/project/:projectId/run/:runId" element={<RunView />} />
+        <Route path="/project/:projectId/run-view/:runId" element={<RunView />} />
       </Routes>
       </AuthProvider>
     </BrowserRouter>
