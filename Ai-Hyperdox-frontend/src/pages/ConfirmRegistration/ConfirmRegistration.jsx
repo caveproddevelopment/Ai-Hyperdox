@@ -1,9 +1,11 @@
 // src/pages/ConfirmRegistration/ConfirmRegistration.jsx
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import logo from "../../assets/AI Hyperdox Logo Square V2.png";
 import "./ConfirmRegistration.css";
 
 export default function ConfirmRegistration() {
+  const navigate = useNavigate();
+
   return (
     <div className="confirm-page">
 
@@ -23,9 +25,13 @@ export default function ConfirmRegistration() {
         {/* ── Sign In prompt ── */}
         <div className="confirm-signin-prompt">
           <p>Once you've verified your email, you're ready to launch:</p>
-          <Link to="/signin" className="confirm-signin-btn">
-            Sign In to Your Account
-          </Link>
+          <button
+            type="button"
+            className="confirm-signin-btn"
+            onClick={() => navigate("/signin")}
+          >
+            Continue
+          </button>
         </div>
 
         <p className="confirm-meanwhile">In the meantime you can</p>
