@@ -9,7 +9,9 @@ import logo from '../../assets/AI Hyperdox Logo Square V2.png';
 import GoalsScopeIcon from '../../assets/Documenticon/GoalsscopeIcon.png';
 import "./GoalsAndScope.css";
 
-const BASE_URL = import.meta.env.VITE_API_URL;
+const BASE_URL       = import.meta.env.VITE_API_URL;
+const MAX_FILE_MB    = 2;
+const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
 
 const iconModules = import.meta.glob(
   '../../assets/projecticon/*',
@@ -59,12 +61,13 @@ export default function GoalsAndScope() {
     summary:      "",
     long_desc:    "",
   });
-  const [uploadedFile,  setUploadedFile]  = useState(null);
-  const [isDragging,    setIsDragging]    = useState(false);
-  const [status,        setStatus]        = useState("");
-  const [docs,          setDocs]          = useState(null);
-  const [loading,       setLoading]       = useState(false);
-  const [currentRunId,  setCurrentRunId]  = useState(null); // ← tracks active run
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [fileError,    setFileError]    = useState("");
+  const [isDragging,   setIsDragging]   = useState(false);
+  const [status,       setStatus]       = useState("");
+  const [docs,         setDocs]         = useState(null);
+  const [loading,      setLoading]      = useState(false);
+  const [currentRunId, setCurrentRunId] = useState(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -94,109 +97,103 @@ export default function GoalsAndScope() {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
+  // ── File validation ──────────────────────────────────────────
+  function validateAndSetFile(file) {
+    if (!file) return;
+    if (file.size > MAX_FILE_BYTES) {
+      setFileError(
+        `File too large. Maximum size is ${MAX_FILE_MB}MB. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB.`
+      );
+      setUploadedFile(null);
+      const input = document.getElementById("gs-file-input");
+      if (input) input.value = "";
+      return;
+    }
+    setFileError("");
+    setUploadedFile(file);
+  }
+
   function handleDrop(e) {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) setUploadedFile(file);
+    validateAndSetFile(e.dataTransfer.files[0]);
   }
 
   async function handleGenerate() {
-    if (!form.project_name.trim()) {
-      setStatus("⚠ Please enter a project name.");
-      return;
-    }
-    if (!BASE_URL) {
-      setStatus("❌ API configuration error. BASE_URL is not set.");
-      return;
-    }
+    if (!form.project_name.trim()) { setStatus("Please enter a project name."); return; }
+    if (!BASE_URL)                 { setStatus("API configuration error. BASE_URL is not set."); return; }
+    if (fileError)                 { setStatus("Please remove the invalid file before generating."); return; }
 
     setLoading(true);
     setDocs(null);
     setCurrentRunId(null);
 
-    // ── STEP 1: Billing check ────────────────────────────────────
+    // ── STEP 1: Billing ──────────────────────────────────────────
     let runId = null;
     try {
       setStatus("Checking billing...");
       const initiateRun   = httpsCallable(functions, "initiateRun");
-      const billingResult = await initiateRun({
-        projectId,
-        docType: "goals-scope",
-      });
+      const billingResult = await initiateRun({ projectId, docType: "goals-scope" });
 
       runId = billingResult.data.runId ?? null;
       setCurrentRunId(runId);
 
       if (billingResult.data.status === "free") {
-        setStatus(
-          `✅ Free run used. ${billingResult.data.freeRunsRemaining} free run(s) remaining. Generating documents...`
-        );
+        setStatus(`Free run used. ${billingResult.data.freeRunsRemaining} free run(s) remaining. Generating documents...`);
       } else {
-        setStatus("💳 $10 charged successfully. Generating documents...");
+        setStatus("$10 charged successfully. Generating documents...");
       }
     } catch (err) {
-      setStatus(`❌ Billing error: ${err.message}`);
+      setStatus(`Billing error: ${err.message}`);
       setLoading(false);
       return;
     }
 
-    // ── STEP 2: Call document generation API ────────────────────
+    // ── STEP 2: Generate documents ───────────────────────────────
     try {
-      console.log("Calling:", `${BASE_URL}/api/predict`);
       const response = await fetch(`${BASE_URL}/api/predict`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          data: [
-            form.project_name,
-            form.problem,
-            form.summary,
-            form.long_desc,
-            [],
-          ],
+          data: [form.project_name, form.problem, form.summary, form.long_desc, []],
           api_name: "/generate_documents",
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 
       const result = await response.json();
-      if (!result.data || !Array.isArray(result.data)) {
-        throw new Error("Invalid response format from server.");
-      }
+      if (!result.data || !Array.isArray(result.data)) throw new Error("Invalid response format from server.");
 
       const [statusMsg, goals, scope, risk, milestones, resources] = result.data;
       setStatus(statusMsg);
       setDocs({ goals, scope, risk, milestones, resources });
 
-      // ── STEP 3: Save run date + document URLs ──────────────────
+      // ── STEP 3: Save to Firestore ────────────────────────────
       const runDate = new Date().toLocaleDateString("en-US", {
-        year:  "numeric",
-        month: "long",
-        day:   "numeric",
+        year: "numeric", month: "long", day: "numeric",
       });
       setLastRunDate(runDate);
 
-      // Update project's last run date
-      await updateDoc(doc(db, "projects", projectId), {
-        lastGoalsScopeRun: runDate,
-      });
+      await updateDoc(doc(db, "projects", projectId), { lastGoalsScopeRun: runDate });
 
-      // ✅ Save document URLs into the run document for the library
       if (runId) {
         await updateDoc(doc(db, "runs", runId), {
-          documents: { goals, scope, risk, milestones, resources },
+          documents:   { goals, scope, risk, milestones, resources },
           completedAt: Date.now(),
           projectName: form.project_name,
-          isPrimary: false,
+          isPrimary:   false,
+          inputs: {
+            projectName: form.project_name,
+            problem:     form.problem,
+            summary:     form.summary,
+            longDesc:    form.long_desc,
+          },
         });
       }
 
     } catch (err) {
-      setStatus(`❌ Error: ${err.message || "Connection failed. Please try again."}`);
+      setStatus(`Error: ${err.message || "Connection failed. Please try again."}`);
       console.error(err);
     } finally {
       setLoading(false);
@@ -206,9 +203,7 @@ export default function GoalsAndScope() {
   function getDownloadUrl(fileObj) {
     if (!fileObj) return null;
     if (typeof fileObj === "string" && fileObj.startsWith("http")) return fileObj;
-    if (typeof fileObj === "string") {
-      return `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
-    }
+    if (typeof fileObj === "string") return `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
     const filePath = fileObj?.path ?? fileObj?.url ?? fileObj?.name;
     return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
   }
@@ -256,10 +251,7 @@ export default function GoalsAndScope() {
                 src={projectIcon}
                 alt="Project"
                 className="gs-project-icon"
-                onError={e => {
-                  e.currentTarget.onerror = null;
-                  e.currentTarget.src = logo;
-                }}
+                onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = logo; }}
               />
             )}
           </div>
@@ -267,75 +259,50 @@ export default function GoalsAndScope() {
 
         <section className="ndr-content">
 
-          {/* Icon + Last Run */}
           <div className="gs-run-header">
             <img src={GoalsScopeIcon} alt="Goals & Scope" className="gs-doc-icon" />
             <p className="gs-last-run">
               {lastRunDate
                 ? <>Last Goals & Scope Run For <strong>{projectName}</strong> Was {lastRunDate}&nbsp;
-                    <Link to={`/project/${projectId}/library`} className="gs-view-run">
-                      View Run
-                    </Link>
+                    <Link to={`/project/${projectId}/library`} className="gs-view-run">View Run</Link>
                   </>
                 : <>No previous Goals & Scope runs for <strong>{projectName}</strong></>
               }
             </p>
           </div>
 
-          {/* Two columns */}
           <div className="gs-columns">
 
-            {/* LEFT - Inputs */}
+            {/* LEFT */}
             <div className="gs-inputs">
               <div className="gs-field-group">
                 <label className="gs-label">Project Name (short)</label>
-                <input
-                  className="gs-input"
-                  name="project_name"
-                  placeholder="e.g. Jocksalot Fan"
-                  value={form.project_name}
-                  onChange={handleChange}
-                />
+                <input className="gs-input" name="project_name" placeholder="e.g. Jocksalot Fan" value={form.project_name} onChange={handleChange} />
               </div>
 
               <div className="gs-field-group">
                 <label className="gs-label">What Problem is Being Solved?</label>
-                <textarea
-                  className="gs-textarea"
-                  name="problem"
-                  value={form.problem}
-                  onChange={handleChange}
-                  rows={3}
-                />
+                <textarea className="gs-textarea" name="problem" value={form.problem} onChange={handleChange} rows={3} />
               </div>
 
               <div className="gs-field-group">
                 <label className="gs-label">High-Level Summary (1-2 sentences)</label>
-                <textarea
-                  className="gs-textarea"
-                  name="summary"
-                  value={form.summary}
-                  onChange={handleChange}
-                  rows={2}
-                />
+                <textarea className="gs-textarea" name="summary" value={form.summary} onChange={handleChange} rows={2} />
               </div>
 
               <div className="gs-field-group">
                 <label className="gs-label">Longer Description / Requirements</label>
-                <textarea
-                  className="gs-textarea"
-                  name="long_desc"
-                  value={form.long_desc}
-                  onChange={handleChange}
-                  rows={6}
-                />
+                <textarea className="gs-textarea" name="long_desc" value={form.long_desc} onChange={handleChange} rows={6} />
               </div>
 
               {/* Upload */}
               <div className="gs-field-group">
-                <label className="gs-label">Upload Documents (PDF / DOCX / TXT)</label>
+                <label className="gs-label">
+                  Upload Documents (PDF / DOCX / TXT)
+                  <span className="gs-file-size-hint"> — Max {MAX_FILE_MB}MB</span>
+                </label>
                 <div
-                  className={`gs-upload-box ${isDragging ? "gs-upload-box--drag" : ""}`}
+                  className={`gs-upload-box ${isDragging ? "gs-upload-box--drag" : ""} ${fileError ? "gs-upload-box--error" : ""}`}
                   onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
                   onDragLeave={() => setIsDragging(false)}
                   onDrop={handleDrop}
@@ -345,11 +312,14 @@ export default function GoalsAndScope() {
                     id="gs-file-input"
                     type="file"
                     accept=".pdf,.docx,.txt"
-                    onChange={e => setUploadedFile(e.target.files[0])}
+                    onChange={e => validateAndSetFile(e.target.files[0])}
                     hidden
                   />
                   {uploadedFile ? (
-                    <p className="gs-upload-name">📎 {uploadedFile.name}</p>
+                    <p className="gs-upload-name">
+                      📎 {uploadedFile.name}
+                      <span className="gs-upload-size"> ({(uploadedFile.size / 1024 / 1024).toFixed(2)}MB)</span>
+                    </p>
                   ) : (
                     <>
                       <div className="gs-upload-icon">↑</div>
@@ -357,18 +327,36 @@ export default function GoalsAndScope() {
                     </>
                   )}
                 </div>
+
+                {fileError && <p className="gs-file-error">❌ {fileError}</p>}
+
+                {uploadedFile && !fileError && (
+                  <button
+                    type="button"
+                    className="gs-clear-file-btn"
+                    onClick={e => {
+                      e.stopPropagation();
+                      setUploadedFile(null);
+                      setFileError("");
+                      const input = document.getElementById("gs-file-input");
+                      if (input) input.value = "";
+                    }}
+                  >
+                    ✕ Remove file
+                  </button>
+                )}
               </div>
 
               <button
                 className="gs-generate-btn"
                 onClick={handleGenerate}
-                disabled={loading}
+                disabled={loading || !!fileError}
               >
                 {loading ? "Generating..." : "🚀 Generate Documents"}
               </button>
             </div>
 
-            {/* RIGHT - Outputs */}
+            {/* RIGHT */}
             <div className="gs-outputs">
               <div className="gs-field-group">
                 <label className="gs-label">Status Message</label>
@@ -382,12 +370,7 @@ export default function GoalsAndScope() {
                   <label className="gs-label">📄 {label}</label>
                   <div className="gs-output-box">
                     {docs?.[docKey] ? (
-                      <a
-                        className="gs-download-link"
-                        href={getDownloadUrl(docs[docKey])}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
+                      <a className="gs-download-link" href={getDownloadUrl(docs[docKey])} target="_blank" rel="noreferrer">
                         ⬇ Download
                       </a>
                     ) : (

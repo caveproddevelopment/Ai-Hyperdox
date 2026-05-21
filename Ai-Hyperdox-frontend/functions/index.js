@@ -231,7 +231,7 @@ exports.initiateRun = onCall(
       throw new HttpsError("unauthenticated", "You must be signed in.");
     }
 
-    const { projectId, docType } = request.data;
+    const { projectId, docType, existingRunId = null } = request.data;
     if (!projectId || !docType) {
       throw new HttpsError("invalid-argument", "projectId and docType are required");
     }
@@ -271,16 +271,20 @@ exports.initiateRun = onCall(
 
     // ── Free run ─────────────────────────────────────────────────
     if (result.status === "free") {
-      const runRef = await db.collection("runs").add({
-        userId: uid, projectId, docType,
-        amount: 0, status: "free",
-        createdAt: FieldValue.serverTimestamp(),
-      });
+      // If existingRunId provided, reuse that doc — don't create a new one
+      const runId = existingRunId
+        ? existingRunId
+        : (await db.collection("runs").add({
+            userId: uid, projectId, docType,
+            amount: 0, status: "free",
+            createdAt: FieldValue.serverTimestamp(),
+          })).id;
+
       return {
         success: true,
         status: "free",
         freeRunsRemaining: result.freeRunsRemaining,
-        runId: runRef.id,   // ✅ returned so frontend can save document URLs
+        runId,
       };
     }
 
@@ -304,12 +308,15 @@ exports.initiateRun = onCall(
       );
     }
 
-    const runRef = await db.collection("runs").add({
-      userId: uid, projectId, docType,
-      amount: 1000, status: "paid",
-      stripePaymentIntentId: paymentIntent.id,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    // If existingRunId provided, reuse that doc — don't create a new one
+    const runId = existingRunId
+      ? existingRunId
+      : (await db.collection("runs").add({
+          userId: uid, projectId, docType,
+          amount: 1000, status: "paid",
+          stripePaymentIntentId: paymentIntent.id,
+          createdAt: FieldValue.serverTimestamp(),
+        })).id;
 
     await userRef.update({ totalRunsUsed: FieldValue.increment(1) });
 
@@ -317,9 +324,9 @@ exports.initiateRun = onCall(
       success: true,
       status: "paid",
       paymentIntentId: paymentIntent.id,
-      runId: runRef.id,   // ✅ returned so frontend can save document URLs
+      runId,
     };
   }
 );
 
-// v8
+// v9

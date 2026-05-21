@@ -1,0 +1,280 @@
+/* src/pages/RunView/RunView.css */
+
+/* ── Layout ─────────────────────────────────────────────────── */
+.rv-root {
+  display: flex;
+  min-height: 100vh;
+  background: #f4f5f7;
+  font-family: "Segoe UI", sans-serif;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────── */
+.rv-sidebar {
+  width: 160px;
+  min-width: 160px;
+  background: #111;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.rv-logo-wrap { display: block; margin-bottom: 8px; }
+.rv-logo      { width: 80px; height: auto; }
+
+.rv-back-link {
+  color: #aaa;
+  font-size: 12px;
+  text-decoration: none;
+  margin-bottom: 8px;
+}
+.rv-back-link:hover { color: #fff; }
+
+.rv-project-section { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.rv-project-label   { color: #fff; font-size: 12px; font-weight: 600; }
+.rv-project-link    { color: #aaa; font-size: 12px; text-decoration: none; padding: 2px 0; }
+.rv-project-link:hover            { color: #fff; }
+.rv-project-link--active          { color: #fff; font-weight: 600; }
+
+.rv-nav           { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.rv-nav-link      { color: #aaa; font-size: 12px; text-decoration: none; padding: 4px 0; }
+.rv-nav-link:hover { color: #fff; }
+
+.rv-sidebar-footer { margin-top: auto; }
+.rv-signout-btn {
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.rv-signout-btn:hover { color: #fff; }
+
+/* ── Main ────────────────────────────────────────────────────── */
+.rv-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 24px 32px;
+}
+
+.rv-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 16px;
+  color: #666;
+}
+
+/* ── Top bar ─────────────────────────────────────────────────── */
+.rv-topbar {
+  margin-bottom: 20px;
+}
+.rv-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111;
+  margin: 0;
+}
+
+/* ── Content ─────────────────────────────────────────────────── */
+.rv-content { flex: 1; }
+
+/* Run header row */
+.rv-run-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.rv-doc-icon {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+.rv-last-run {
+  font-size: 14px;
+  color: #444;
+  margin: 0;
+}
+.rv-view-run-link {
+  color: #1a73e8;
+  text-decoration: none;
+  font-weight: 500;
+}
+.rv-view-run-link:hover { text-decoration: underline; }
+
+/* ── Two-column grid ─────────────────────────────────────────── */
+.rv-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .rv-columns { grid-template-columns: 1fr; }
+}
+
+/* ── Shared field group ──────────────────────────────────────── */
+.rv-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.rv-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+
+.rv-input,
+.rv-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #111;
+  background: #fff;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.rv-input:focus,
+.rv-textarea:focus {
+  outline: none;
+  border-color: #1a73e8;
+}
+
+/* ── Upload box ──────────────────────────────────────────────── */
+.rv-file-hint   { font-weight: 400; color: #888; }
+
+.rv-upload-box {
+  border: 2px dashed #bbb;
+  border-radius: 8px;
+  background: #fafafa;
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.rv-upload-box:hover        { border-color: #1a73e8; background: #f0f6ff; }
+.rv-upload-box--drag        { border-color: #1a73e8; background: #e8f0fe; }
+.rv-upload-box--error       { border-color: #d93025; background: #fff0ee; }
+
+.rv-upload-icon { font-size: 28px; color: #888; margin-bottom: 8px; }
+.rv-upload-text { font-size: 13px; color: #666; line-height: 1.6; margin: 0; }
+.rv-upload-name {
+  font-size: 13px;
+  color: #333;
+  word-break: break-all;
+  margin: 0;
+}
+.rv-upload-size { color: #888; }
+
+.rv-file-error {
+  font-size: 12px;
+  color: #d93025;
+  margin: 0;
+}
+
+.rv-clear-file-btn {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
+  cursor: pointer;
+  padding: 4px 10px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.rv-clear-file-btn:hover { color: #d93025; border-color: #d93025; }
+
+/* ── Generate button ─────────────────────────────────────────── */
+.rv-generate-btn {
+  width: 100%;
+  padding: 14px;
+  background: #1a73e8;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-top: 4px;
+}
+.rv-generate-btn:hover:not(:disabled) { background: #1558b0; }
+.rv-generate-btn:disabled             { background: #93bbf5; cursor: not-allowed; }
+
+/* ── Status box ──────────────────────────────────────────────── */
+.rv-status-box {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  min-height: 48px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+}
+.rv-status-text { font-size: 13px; color: #333; margin: 0; }
+
+/* ── Output download boxes ───────────────────────────────────── */
+.rv-output-box {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fff;
+  min-height: 48px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.rv-download-link {
+  color: #1a73e8;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.rv-download-link:hover { text-decoration: underline; }
+
+.rv-output-empty-icon { font-size: 20px; color: #ccc; }
+
+/* ── Meta strip ──────────────────────────────────────────────── */
+.rv-meta-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.rv-status-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.rv-status-badge--free { background: #e6f4ea; color: #2d7a3a; }
+.rv-status-badge--paid { background: #fce8e6; color: #c5221f; }
+
+.rv-meta-id {
+  font-size: 11px;
+  color: #999;
+  word-break: break-all;
+}

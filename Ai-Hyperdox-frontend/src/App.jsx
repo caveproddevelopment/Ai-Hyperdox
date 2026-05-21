@@ -18,6 +18,7 @@ import GoalsAndScope from "./pages/GoalsAndScope/GoalsAndScope";
 import NewDocumentRun from "./pages/NewDocumentRun/NewDocumentRun";
 import BillingSettings from "./pages/BillingSettings/BillingSettings";
 import ProjectLibrary from "./pages/ProjectLibrary/ProjectLibrary";
+import RunView from './pages/RunView/RunView';
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="/project/:projectId/run/goals-scope" element={<GoalsAndScope />} />
         <Route path="/billing"              element={<BillingSettings />} />
         <Route path="/project/:projectId/library" element={<ProjectLibrary />} />
+        <Route path="/project/:projectId/run/:runId" element={<RunView />} />
       </Routes>
       </AuthProvider>
     </BrowserRouter>
