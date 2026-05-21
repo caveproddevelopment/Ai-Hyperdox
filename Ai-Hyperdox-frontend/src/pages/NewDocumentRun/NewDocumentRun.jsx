@@ -87,6 +87,7 @@ export default function NewDocumentRun() {
           <div className="ndr-project-section">
             <span className="ndr-project-label">{projectName}:</span>
             <Link to={`/project/${projectId}/edit`}    className="ndr-project-link">Project Details</Link>
+            <Link to={`/project/${projectId}/library`} className="ndr-project-link">Project Library</Link>
             <Link to={`/project/${projectId}/run`}     className="ndr-project-link ndr-project-link--active">New Document Run</Link>
           </div>
         )}

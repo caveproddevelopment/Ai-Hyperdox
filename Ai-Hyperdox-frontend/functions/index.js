@@ -32,7 +32,7 @@ function generateToken() {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  sendVerificationEmail — uses Firebase default verification page
+//  sendVerificationEmail
 // ════════════════════════════════════════════════════════════════
 
 exports.sendVerificationEmail = onCall(
@@ -44,9 +44,8 @@ exports.sendVerificationEmail = onCall(
     const user = await getAuth().getUser(uid);
     if (user.emailVerified) return { success: true, message: "Already verified" };
 
-    
     const actionCodeSettings = {
-      url: "https://ai-hyperdox.vercel.app/sign-in",
+      url: "https://ai-hyperdox.vercel.app/signin",
       handleCodeInApp: false,
     };
 
@@ -62,7 +61,7 @@ exports.sendVerificationEmail = onCall(
 );
 
 // ════════════════════════════════════════════════════════════════
-//  sendPasswordResetEmail — sends custom 5-min token link
+//  sendPasswordResetEmail
 // ════════════════════════════════════════════════════════════════
 
 exports.sendPasswordResetEmail = onCall(
@@ -135,7 +134,7 @@ exports.sendPasswordResetEmailHttp = onRequest(
 );
 
 // ════════════════════════════════════════════════════════════════
-//  validateResetToken — called by ResetPassword page on load
+//  validateResetToken
 // ════════════════════════════════════════════════════════════════
 
 exports.validateResetToken = onCall(
@@ -159,7 +158,6 @@ exports.validateResetToken = onCall(
       throw new HttpsError("deadline-exceeded", "This link has expired.");
     }
 
-    // Mark as used so it cannot be reused
     await db.collection("passwordResets").doc(token).update({ used: true });
 
     return { link: data.link, email: data.email };
@@ -271,15 +269,22 @@ exports.initiateRun = onCall(
       return { status: "charge_needed", customerId, paymentMethodId };
     });
 
+    // ── Free run ─────────────────────────────────────────────────
     if (result.status === "free") {
-      await db.collection("runs").add({
+      const runRef = await db.collection("runs").add({
         userId: uid, projectId, docType,
         amount: 0, status: "free",
         createdAt: FieldValue.serverTimestamp(),
       });
-      return { success: true, status: "free", freeRunsRemaining: result.freeRunsRemaining };
+      return {
+        success: true,
+        status: "free",
+        freeRunsRemaining: result.freeRunsRemaining,
+        runId: runRef.id,   // ✅ returned so frontend can save document URLs
+      };
     }
 
+    // ── Paid run ─────────────────────────────────────────────────
     let paymentIntent;
     try {
       paymentIntent = await stripe.paymentIntents.create({
@@ -299,7 +304,7 @@ exports.initiateRun = onCall(
       );
     }
 
-    await db.collection("runs").add({
+    const runRef = await db.collection("runs").add({
       userId: uid, projectId, docType,
       amount: 1000, status: "paid",
       stripePaymentIntentId: paymentIntent.id,
@@ -308,8 +313,13 @@ exports.initiateRun = onCall(
 
     await userRef.update({ totalRunsUsed: FieldValue.increment(1) });
 
-    return { success: true, status: "paid", paymentIntentId: paymentIntent.id };
+    return {
+      success: true,
+      status: "paid",
+      paymentIntentId: paymentIntent.id,
+      runId: runRef.id,   // ✅ returned so frontend can save document URLs
+    };
   }
 );
 
-// v7
+// v8

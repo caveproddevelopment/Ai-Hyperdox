@@ -1,0 +1,263 @@
+/* src/pages/ProjectLibrary/ProjectLibrary.css */
+
+/* ── Root layout ───────────────────────────────────────────────── */
+.lib-root {
+  display: flex;
+  min-height: 100vh;
+  background: #0a0a0a;
+  color: #fff;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────── */
+.lib-sidebar {
+  width: 180px;
+  min-height: 100vh;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 20px 16px;
+  gap: 8px;
+  flex-shrink: 0;
+  border-right: 1px solid #1a1a1a;
+}
+
+.lib-logo-wrap {
+  display: block;
+  margin-bottom: 12px;
+}
+.lib-logo {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+}
+
+.lib-back-link {
+  color: #00d4ff;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: block;
+}
+.lib-back-link:hover { text-decoration: underline; }
+
+.lib-project-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  width: 100%;
+}
+.lib-project-label {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+.lib-project-link {
+  color: #00d4ff;
+  text-decoration: none;
+  font-size: 12px;
+  padding: 2px 0;
+  display: block;
+}
+.lib-project-link:hover { text-decoration: underline; }
+.lib-project-link--active {
+  color: #fff;
+  font-weight: 700;
+}
+
+.lib-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  width: 100%;
+}
+.lib-nav-link {
+  color: #00d4ff;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 3px 0;
+  display: block;
+}
+.lib-nav-link:hover { text-decoration: underline; }
+
+.lib-sidebar-footer {
+  margin-top: auto;
+  width: 100%;
+}
+.lib-signout-btn {
+  width: 100%;
+  padding: 8px 0;
+  background: transparent;
+  border: 1px solid #333;
+  color: #aaa;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.lib-signout-btn:hover { border-color: #00d4ff; color: #00d4ff; }
+
+/* ── Main ──────────────────────────────────────────────────────── */
+.lib-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #fff;
+  color: #111;
+}
+
+/* ── Topbar ────────────────────────────────────────────────────── */
+.lib-topbar {
+  padding: 20px 32px 16px;
+  border-bottom: 1px solid #eee;
+  background: #fff;
+}
+.lib-topbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.lib-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111;
+  margin: 0;
+}
+.lib-project-icon {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+/* ── Content ───────────────────────────────────────────────────── */
+.lib-content {
+  flex: 1;
+  padding: 32px;
+}
+
+/* ── Empty state ───────────────────────────────────────────────── */
+.lib-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+.lib-empty {
+  color: #555;
+  font-size: 15px;
+}
+.lib-empty strong { color: #111; }
+.lib-new-run-btn {
+  display: inline-block;
+  padding: 10px 24px;
+  background: #00d4ff;
+  color: #000;
+  font-weight: 700;
+  font-size: 13px;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+.lib-new-run-btn:hover { background: #00b8dd; }
+
+/* ── Grid ──────────────────────────────────────────────────────── */
+.lib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 32px;
+}
+
+/* ── Card ──────────────────────────────────────────────────────── */
+.lib-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 16px 20px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  transition: box-shadow 0.2s;
+}
+.lib-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+
+.lib-card-icon {
+  width: 110px;
+  height: 110px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.15));
+}
+
+.lib-card-date {
+  font-size: 13px;
+  color: #444;
+  margin: 0;
+  font-weight: 500;
+}
+
+/* ── Primary checkbox ──────────────────────────────────────────── */
+.lib-card-primary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #333;
+}
+.lib-primary-box {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #999;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.lib-primary-box--on {
+  background: #2ecc40;
+  border-color: #2ecc40;
+}
+
+/* ── Action links ──────────────────────────────────────────────── */
+.lib-card-actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+.lib-action-link {
+  color: #00aacc;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+.lib-action-link:hover { text-decoration: underline; }
+.lib-action-link--disabled {
+  color: #bbb;
+  cursor: not-allowed;
+}
+
+/* ── Delete ────────────────────────────────────────────────────── */
+.lib-delete-btn {
+  background: none;
+  border: none;
+  color: #e53e3e;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+.lib-delete-btn:hover { color: #c53030; text-decoration: underline; }

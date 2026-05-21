@@ -1,3 +1,4 @@
+// src/pages/GoalsAndScope/GoalsAndScope.jsx
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -58,11 +59,12 @@ export default function GoalsAndScope() {
     summary:      "",
     long_desc:    "",
   });
-  const [uploadedFile, setUploadedFile] = useState(null);
-  const [isDragging,   setIsDragging]   = useState(false);
-  const [status,       setStatus]       = useState("");
-  const [docs,         setDocs]         = useState(null);
-  const [loading,      setLoading]      = useState(false);
+  const [uploadedFile,  setUploadedFile]  = useState(null);
+  const [isDragging,    setIsDragging]    = useState(false);
+  const [status,        setStatus]        = useState("");
+  const [docs,          setDocs]          = useState(null);
+  const [loading,       setLoading]       = useState(false);
+  const [currentRunId,  setCurrentRunId]  = useState(null); // ← tracks active run
 
   useEffect(() => {
     if (!projectId) return;
@@ -111,17 +113,21 @@ export default function GoalsAndScope() {
 
     setLoading(true);
     setDocs(null);
+    setCurrentRunId(null);
 
-    // ── STEP 1: Billing check — deduct free run or charge card ──────────
+    // ── STEP 1: Billing check ────────────────────────────────────
+    let runId = null;
     try {
       setStatus("Checking billing...");
-      const initiateRun = httpsCallable(functions, "initiateRun");
+      const initiateRun   = httpsCallable(functions, "initiateRun");
       const billingResult = await initiateRun({
         projectId,
         docType: "goals-scope",
       });
 
-      // Show user whether it was free or charged
+      runId = billingResult.data.runId ?? null;
+      setCurrentRunId(runId);
+
       if (billingResult.data.status === "free") {
         setStatus(
           `✅ Free run used. ${billingResult.data.freeRunsRemaining} free run(s) remaining. Generating documents...`
@@ -130,17 +136,16 @@ export default function GoalsAndScope() {
         setStatus("💳 $10 charged successfully. Generating documents...");
       }
     } catch (err) {
-      // Billing failed — stop here, don't call the API
       setStatus(`❌ Billing error: ${err.message}`);
       setLoading(false);
       return;
     }
 
-    // ── STEP 2: Call the document generation API ─────────────────────────
+    // ── STEP 2: Call document generation API ────────────────────
     try {
       console.log("Calling:", `${BASE_URL}/api/predict`);
       const response = await fetch(`${BASE_URL}/api/predict`, {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           data: [
@@ -167,16 +172,28 @@ export default function GoalsAndScope() {
       setStatus(statusMsg);
       setDocs({ goals, scope, risk, milestones, resources });
 
-      // ── STEP 3: Save last run date to the project doc ──────────────────
+      // ── STEP 3: Save run date + document URLs ──────────────────
       const runDate = new Date().toLocaleDateString("en-US", {
         year:  "numeric",
         month: "long",
         day:   "numeric",
       });
       setLastRunDate(runDate);
+
+      // Update project's last run date
       await updateDoc(doc(db, "projects", projectId), {
         lastGoalsScopeRun: runDate,
       });
+
+      // ✅ Save document URLs into the run document for the library
+      if (runId) {
+        await updateDoc(doc(db, "runs", runId), {
+          documents: { goals, scope, risk, milestones, resources },
+          completedAt: Date.now(),
+          projectName: form.project_name,
+          isPrimary: false,
+        });
+      }
 
     } catch (err) {
       setStatus(`❌ Error: ${err.message || "Connection failed. Please try again."}`);
@@ -212,8 +229,9 @@ export default function GoalsAndScope() {
         {!fetching && (
           <div className="ndr-project-section">
             <span className="ndr-project-label">{projectName}:</span>
-            <Link to={`/project/${projectId}/edit`} className="ndr-project-link">Project Details</Link>
-            <Link to={`/project/${projectId}/run`}  className="ndr-project-link ndr-project-link--active">New Document Run</Link>
+            <Link to={`/project/${projectId}/edit`}    className="ndr-project-link">Project Details</Link>
+            <Link to={`/project/${projectId}/library`} className="ndr-project-link">Project Library</Link>
+            <Link to={`/project/${projectId}/run`}     className="ndr-project-link ndr-project-link--active">New Document Run</Link>
           </div>
         )}
 
@@ -255,7 +273,9 @@ export default function GoalsAndScope() {
             <p className="gs-last-run">
               {lastRunDate
                 ? <>Last Goals & Scope Run For <strong>{projectName}</strong> Was {lastRunDate}&nbsp;
-                    <span className="gs-view-run">View Run</span>
+                    <Link to={`/project/${projectId}/library`} className="gs-view-run">
+                      View Run
+                    </Link>
                   </>
                 : <>No previous Goals & Scope runs for <strong>{projectName}</strong></>
               }
