@@ -44,9 +44,9 @@ exports.sendVerificationEmail = onCall(
     const user = await getAuth().getUser(uid);
     if (user.emailVerified) return { success: true, message: "Already verified" };
 
-    // Force Firebase's own verification page (not the custom site action handler)
+    
     const actionCodeSettings = {
-      url:            "https://ai-hyperdox.firebaseapp.com/__/auth/action",
+      url: "https://ai-hyperdox.vercel.app/sign-in",
       handleCodeInApp: false,
     };
 
