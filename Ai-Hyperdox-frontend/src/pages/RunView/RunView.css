@@ -278,3 +278,39 @@
   color: #999;
   word-break: break-all;
 }
+
+/* ── Generating animation ────────────────────────────────────── */
+.rv-generating {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+.rv-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #d0e4ff;
+  border-top-color: #1a73e8;
+  border-radius: 50%;
+  animation: rv-spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes rv-spin {
+  to { transform: rotate(360deg); }
+}
+
+.rv-generating-text {
+  font-size: 13px;
+  color: #1a73e8;
+  font-weight: 500;
+  animation: rv-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes rv-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}

@@ -97,7 +97,6 @@ export default function GoalsAndScope() {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
-  // ── File validation ──────────────────────────────────────────
   function validateAndSetFile(file) {
     if (!file) return;
     if (file.size > MAX_FILE_BYTES) {
@@ -369,7 +368,12 @@ export default function GoalsAndScope() {
                 <div key={docKey} className="gs-field-group">
                   <label className="gs-label">📄 {label}</label>
                   <div className="gs-output-box">
-                    {docs?.[docKey] ? (
+                    {loading ? (
+                      <div className="gs-generating">
+                        <span className="gs-spinner" />
+                        <span className="gs-generating-text">Generating...</span>
+                      </div>
+                    ) : docs?.[docKey] ? (
                       <a className="gs-download-link" href={getDownloadUrl(docs[docKey])} target="_blank" rel="noreferrer">
                         ⬇ Download
                       </a>

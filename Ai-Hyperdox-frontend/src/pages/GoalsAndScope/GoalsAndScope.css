@@ -187,3 +187,39 @@
   text-decoration: none;
 }
 .gs-download-link:hover { text-decoration: underline; }
+/* ── Paste this at the bottom of GoalsAndScope.css ── */
+
+.gs-generating {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+.gs-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #d0e4ff;
+  border-top-color: #1a73e8;
+  border-radius: 50%;
+  animation: gs-spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes gs-spin {
+  to { transform: rotate(360deg); }
+}
+
+.gs-generating-text {
+  font-size: 13px;
+  color: #1a73e8;
+  font-weight: 500;
+  animation: gs-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes gs-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}

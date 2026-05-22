@@ -90,12 +90,10 @@ export default function RunView() {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
 
-  // ── Run / project state ──────────────────────────────────────
   const [run,         setRun]         = useState(null);
   const [projectName, setProjectName] = useState("");
   const [loading,     setLoading]     = useState(true);
 
-  // ── Editable form ────────────────────────────────────────────
   const [form, setForm] = useState({
     projectName: "",
     problem:     "",
@@ -103,18 +101,15 @@ export default function RunView() {
     longDesc:    "",
   });
 
-  // ── File upload ──────────────────────────────────────────────
   const [uploadedFile, setUploadedFile] = useState(null);
   const [fileError,    setFileError]    = useState("");
   const [isDragging,   setIsDragging]   = useState(false);
 
-  // ── Generation state ─────────────────────────────────────────
   const [status,       setStatus]       = useState("");
   const [docs,         setDocs]         = useState(null);
   const [generating,   setGenerating]   = useState(false);
   const [currentRunId, setCurrentRunId] = useState(null);
 
-  // ── Load run + project ───────────────────────────────────────
   useEffect(() => {
     if (!runId || !projectId || !currentUser) return;
     async function loadData() {
@@ -126,7 +121,6 @@ export default function RunView() {
         setRun(runData);
         setCurrentRunId(runData.id);
 
-        // Pre-fill form from saved inputs
         if (runData.inputs) {
           setForm({
             projectName: runData.inputs.projectName ?? "",
@@ -136,7 +130,6 @@ export default function RunView() {
           });
         }
 
-        // Pre-fill docs so download links show immediately
         if (runData.documents) setDocs(runData.documents);
 
         const projSnap = await getDoc(doc(db, "projects", projectId));
@@ -150,7 +143,6 @@ export default function RunView() {
     loadData();
   }, [runId, projectId, currentUser, navigate]);
 
-  // ── Helpers ──────────────────────────────────────────────────
   async function handleLogout() {
     try { await logout(); navigate("/signin"); } catch {}
   }
@@ -186,7 +178,6 @@ export default function RunView() {
     return "—";
   }
 
-  // ── Re-generate (overwrites existing run) ────────────────────
   async function handleGenerate() {
     if (!form.projectName.trim()) { setStatus("Please enter a project name."); return; }
     if (!BASE_URL)                { setStatus("API configuration error."); return; }
@@ -198,7 +189,6 @@ export default function RunView() {
     setGenerating(true);
     setDocs(null);
 
-    // ── Billing — pass existingRunId so backend overwrites ─────
     let activeRunId = currentRunId;
     try {
       setStatus("Checking billing...");
@@ -206,7 +196,7 @@ export default function RunView() {
       const billingResult = await initiateRun({
         projectId,
         docType:       run.docType,
-        existingRunId: currentRunId ?? null,   // ← overwrite, not new doc
+        existingRunId: currentRunId ?? null,
       });
       activeRunId = billingResult.data.runId ?? activeRunId;
       setCurrentRunId(activeRunId);
@@ -222,7 +212,6 @@ export default function RunView() {
       return;
     }
 
-    // ── API call ───────────────────────────────────────────────
     try {
       const response = await fetch(`${BASE_URL}/api/predict`, {
         method:  "POST",
@@ -240,7 +229,6 @@ export default function RunView() {
       setStatus(statusMsg);
       setDocs(newDocs);
 
-      // ── Save to Firestore (overwrite same run doc) ─────────
       const runDate = new Date().toLocaleDateString("en-US", {
         year: "numeric", month: "long", day: "numeric",
       });
@@ -267,12 +255,10 @@ export default function RunView() {
     }
   }
 
-  // ── Derived ──────────────────────────────────────────────────
   const meta       = run ? (DOC_TYPE_META[run.docType]   ?? { label: run.docType, icon: GoalsScopeIcon }) : null;
   const config     = run ? (DOC_TYPE_CONFIG[run.docType] ?? null) : null;
   const outputDocs = config?.outputDocs ?? [];
 
-  // ── Render ───────────────────────────────────────────────────
   return (
     <div className="rv-root">
 
@@ -318,7 +304,6 @@ export default function RunView() {
 
             <section className="rv-content">
 
-              {/* Run header row */}
               <div className="rv-run-header">
                 <img src={meta.icon} alt={meta.label} className="rv-doc-icon" />
                 <p className="rv-last-run">
@@ -327,7 +312,6 @@ export default function RunView() {
                 </p>
               </div>
 
-              {/* Two-column layout */}
               <div className="rv-columns">
 
                 {/* ── LEFT: Inputs ── */}
@@ -454,7 +438,12 @@ export default function RunView() {
                       <div key={key} className="rv-field-group">
                         <label className="rv-label">📄 {label}</label>
                         <div className="rv-output-box">
-                          {url ? (
+                          {generating ? (
+                            <div className="rv-generating">
+                              <span className="rv-spinner" />
+                              <span className="rv-generating-text">Generating...</span>
+                            </div>
+                          ) : url ? (
                             <a className="rv-download-link" href={url} target="_blank" rel="noreferrer">
                               ⬇ Download
                             </a>
