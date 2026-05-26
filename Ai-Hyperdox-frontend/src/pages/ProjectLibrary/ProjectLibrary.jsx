@@ -217,9 +217,14 @@ export default function ProjectLibrary() {
           const url = getDownloadUrl(run.documents[key]);
           if (!url) throw new Error(`No URL resolved for key: ${key}`);
 
-          // Build headers — always send auth; Firebase Storage signed URLs
-          // ignore unknown headers so this is safe for both backends.
-          const headers = { Authorization: `Bearer ${token}` };
+          // Firebase Storage signed URLs already contain auth in their query
+          // params — adding an Authorization header causes GCS to reject the
+          // request and return 0 bytes. Only send the header for the fallback
+          // /download backend endpoint.
+          const isFirebaseUrl =
+            url.includes("storage.googleapis.com") ||
+            url.includes("firebasestorage.app");
+          const headers = isFirebaseUrl ? {} : { Authorization: `Bearer ${token}` };
 
           const res = await fetch(url, { headers });
 
