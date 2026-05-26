@@ -41,20 +41,22 @@ def init_firebase():
         print(f"⚠ Firebase init failed: {e}")
         return False
 
-def upload_to_storage(local_path: str, project_name: str, doc_title: str) -> str:
+
+def upload_to_storage(local_path: str, project_name: str, doc_title: str):
     """
-    Upload a local PDF to Firebase Storage and return a permanent signed URL.
-    Falls back to the /tmp local path if Firebase is not configured.
+    Upload a local PDF to Firebase Storage.
+    Returns (signed_url, storage_path).
+    Falls back to (local_path, None) if Firebase is not configured.
     """
     if not init_firebase():
-        return local_path  # fallback — /download endpoint still works while server is alive
+        return local_path, None   # fallback — /download endpoint still works while server is alive
 
     try:
         filename    = os.path.basename(local_path)
         destination = f"generated-docs/{project_name.replace(' ', '_')}/{uuid.uuid4().hex}_{filename}"
 
-        bucket = fb_storage.bucket()
-        blob   = bucket.blob(destination)
+        bucket_obj = fb_storage.bucket()
+        blob       = bucket_obj.blob(destination)
         blob.upload_from_filename(local_path, content_type="application/pdf")
 
         # Signed URL valid for 10 years — effectively permanent
@@ -64,11 +66,11 @@ def upload_to_storage(local_path: str, project_name: str, doc_title: str) -> str
             version="v4",
         )
         print(f"✅ Uploaded {filename} → {url[:80]}...")
-        return url
+        return url, destination   # ← return BOTH url and storage path
 
     except Exception as e:
         print(f"⚠ Upload failed for {local_path}: {e}")
-        return local_path  # fallback
+        return local_path, None   # fallback
 
 
 # ── App setup ───────────────────────────────────────────────────
@@ -181,12 +183,17 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
                 {"role": "user",   "content": prompt},
             ],
         )
-        content   = completion.choices[0].message.content
+        content    = completion.choices[0].message.content
         local_path = create_pdf(project_name, title, content)
 
-        # ── Upload to Firebase Storage → get permanent URL ──
-        permanent_url = upload_to_storage(local_path, project_name, title)
-        pdfs[title]   = permanent_url   # URL (or /tmp fallback)
+        # ── Upload to Firebase Storage → get permanent URL + storage path ──
+        permanent_url, storage_path = upload_to_storage(local_path, project_name, title)
+
+        # Store both url and path so the frontend can delete from Storage later
+        pdfs[title] = {
+            "url":  permanent_url,
+            "path": storage_path,   # None when using /tmp fallback
+        }
 
     return (
         f"✅ Documents generated successfully for '{project_name}'!",
