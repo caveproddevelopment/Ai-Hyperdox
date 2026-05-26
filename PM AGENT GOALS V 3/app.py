@@ -9,16 +9,76 @@ import gradio as gr
 import os
 import threading
 import json
+import uuid
+from datetime import timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_file, abort
 from flask_cors import CORS
 
+# ── Firebase Admin ──────────────────────────────────────────────
+import firebase_admin
+from firebase_admin import credentials, storage as fb_storage
+
+_firebase_ready = False
+
+def init_firebase():
+    global _firebase_ready
+    if _firebase_ready:
+        return True
+    try:
+        sa_json  = os.getenv("FIREBASE_SERVICE_ACCOUNT")   # full JSON string
+        bucket   = os.getenv("FIREBASE_STORAGE_BUCKET")    # e.g. your-project.appspot.com
+        if not sa_json or not bucket:
+            print("⚠ Firebase env vars not set — files will use /tmp fallback.")
+            return False
+        cred = credentials.Certificate(json.loads(sa_json))
+        firebase_admin.initialize_app(cred, {"storageBucket": bucket})
+        _firebase_ready = True
+        print("✅ Firebase Admin initialised.")
+        return True
+    except Exception as e:
+        print(f"⚠ Firebase init failed: {e}")
+        return False
+
+def upload_to_storage(local_path: str, project_name: str, doc_title: str) -> str:
+    """
+    Upload a local PDF to Firebase Storage and return a permanent signed URL.
+    Falls back to the /tmp local path if Firebase is not configured.
+    """
+    if not init_firebase():
+        return local_path  # fallback — /download endpoint still works while server is alive
+
+    try:
+        filename    = os.path.basename(local_path)
+        destination = f"generated-docs/{project_name.replace(' ', '_')}/{uuid.uuid4().hex}_{filename}"
+
+        bucket = fb_storage.bucket()
+        blob   = bucket.blob(destination)
+        blob.upload_from_filename(local_path, content_type="application/pdf")
+
+        # Signed URL valid for 10 years — effectively permanent
+        url = blob.generate_signed_url(
+            expiration=timedelta(days=3650),
+            method="GET",
+            version="v4",
+        )
+        print(f"✅ Uploaded {filename} → {url[:80]}...")
+        return url
+
+    except Exception as e:
+        print(f"⚠ Upload failed for {local_path}: {e}")
+        return local_path  # fallback
+
+
+# ── App setup ───────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+
+# ── Health server (port 8081) ───────────────────────────────────
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -27,12 +87,10 @@ class HealthHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
-def run_health_server():
-    server = HTTPServer(("0.0.0.0", 8081), HealthHandler)
-    server.serve_forever()
+threading.Thread(target=lambda: HTTPServer(("0.0.0.0", 8081), HealthHandler).serve_forever(), daemon=True).start()
 
-threading.Thread(target=run_health_server, daemon=True).start()
 
+# ── Helpers ─────────────────────────────────────────────────────
 def extract_text_from_file(uploaded_file):
     name = getattr(uploaded_file, "name", "uploaded_file").lower()
     if hasattr(uploaded_file, "data"):
@@ -62,28 +120,34 @@ def extract_text_from_file(uploaded_file):
         text = f"(Error reading {name}: {e})"
     return text.strip()
 
-def create_pdf(project_name, doc_title, content):
-    styles = getSampleStyleSheet()
+
+def create_pdf(project_name: str, doc_title: str, content: str) -> str:
+    """Create PDF in /tmp and return its local path."""
+    styles    = getSampleStyleSheet()
     file_path = f"/tmp/{project_name.replace(' ', '_')}_{doc_title.replace(' ', '_')}.pdf"
-    doc = SimpleDocTemplate(file_path, pagesize=LETTER)
-    story = [
-        Paragraph(f"{project_name}", styles["Title"]),
+    doc       = SimpleDocTemplate(file_path, pagesize=LETTER)
+    story     = [
+        Paragraph(project_name, styles["Title"]),
         Spacer(1, 8),
-        Paragraph(f"{doc_title}", styles["Heading2"]),
+        Paragraph(doc_title, styles["Heading2"]),
         Spacer(1, 12),
         Paragraph(content.replace("\n", "<br/>"), styles["Normal"]),
     ]
     doc.build(story)
     return file_path
 
+
+# ── Core generation ─────────────────────────────────────────────
 def generate_documents(project_name, problem, summary, long_desc, uploads):
     extra_text = ""
     if uploads:
         for f in uploads:
             extracted = extract_text_from_file(f)
             extra_text += f"\n\n[Extracted from {f.name}]\n{extracted}"
+
     if not any([project_name, problem, summary, long_desc, extra_text]):
         return "⚠ Please provide project details or upload documents.", None, None, None, None, None
+
     context = f"""Project: {project_name}
 
 Problem Being Solved:
@@ -101,23 +165,29 @@ Uploaded Documents Content:
 Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 """
     prompts = {
-        "Goals Document": f"{context}\nGenerate SMART goals for this project.",
-        "Scope Document": f"{context}\nWrite a clear Project Scope statement (Inclusions, Exclusions, Assumptions, Constraints).",
-        "Risk Document": f"{context}\nIdentify key project risks with Impact, Likelihood, and Mitigation strategies.",
-        "Proposed Milestones Document": f"{context}\nList proposed milestones with deliverables and target dates.",
-        "Resource Teams Required Document": f"{context}\nIdentify resource teams required with roles, skills, and estimated effort.",
+        "Goals Document":                  f"{context}\nGenerate SMART goals for this project.",
+        "Scope Document":                  f"{context}\nWrite a clear Project Scope statement (Inclusions, Exclusions, Assumptions, Constraints).",
+        "Risk Document":                   f"{context}\nIdentify key project risks with Impact, Likelihood, and Mitigation strategies.",
+        "Proposed Milestones Document":    f"{context}\nList proposed milestones with deliverables and target dates.",
+        "Resource Teams Required Document":f"{context}\nIdentify resource teams required with roles, skills, and estimated effort.",
     }
+
     pdfs = {}
     for title, prompt in prompts.items():
         completion = client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are an AI Project Manager creating concise project documentation."},
-                {"role": "user", "content": prompt},
+                {"role": "user",   "content": prompt},
             ],
         )
-        content = completion.choices[0].message.content
-        pdfs[title] = create_pdf(project_name, title, content)
+        content   = completion.choices[0].message.content
+        local_path = create_pdf(project_name, title, content)
+
+        # ── Upload to Firebase Storage → get permanent URL ──
+        permanent_url = upload_to_storage(local_path, project_name, title)
+        pdfs[title]   = permanent_url   # URL (or /tmp fallback)
+
     return (
         f"✅ Documents generated successfully for '{project_name}'!",
         pdfs["Goals Document"],
@@ -128,13 +198,11 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
     )
 
 
-# ── Flask REST API Endpoints ──
-
+# ── Flask REST API ───────────────────────────────────────────────
 @app.route("/api/predict", methods=["POST"])
 def api_predict():
-    """REST API endpoint for document generation"""
     try:
-        data = request.json or {}
+        data       = request.json or {}
         input_data = data.get("data", [])
 
         if len(input_data) < 4:
@@ -147,7 +215,6 @@ def api_predict():
         uploads      = input_data[4] if len(input_data) > 4 else []
 
         result = generate_documents(project_name, problem, summary, long_desc, uploads or [])
-
         return jsonify({"data": result}), 200
 
     except Exception as e:
@@ -156,22 +223,17 @@ def api_predict():
 
 @app.route("/download", methods=["GET"])
 def download_file():
-    """Serve generated PDF files for download"""
+    """
+    Fallback download endpoint — only used when Firebase Storage is not configured
+    and files are still on the Railway /tmp filesystem (i.e. same session).
+    """
     path = request.args.get("path")
-
-    # Validate path is provided
     if not path:
         abort(400, description="Missing 'path' query parameter.")
-
-    # Security: only allow files inside /tmp/
     if not path.startswith("/tmp/"):
         abort(403, description="Access denied.")
-
-    # Check file exists
     if not os.path.exists(path):
-        abort(404, description=f"File not found: {path}")
-
-    # Stream file as download
+        abort(404, description=f"File not found: {path}. The server may have restarted — please regenerate the documents.")
     return send_file(
         path,
         as_attachment=True,
@@ -182,11 +244,10 @@ def download_file():
 
 @app.route("/api/health", methods=["GET"])
 def health_check():
-    """Health check endpoint"""
-    return jsonify({"status": "ok"}), 200
+    return jsonify({"status": "ok", "firebase": _firebase_ready}), 200
 
 
-# ── Gradio UI ──
+# ── Gradio UI ────────────────────────────────────────────────────
 with gr.Blocks(title="AIPM – Monte Turner's AI Project Manager") as demo:
     gr.HTML("<div style='text-align:center'><h1>📄 AIPM – AI Project Manager Enhanced</h1>"
             "<p>Generate SMART Goals | Scope | Risk | Milestones | Resources</p></div>")
@@ -215,7 +276,6 @@ with gr.Blocks(title="AIPM – Monte Turner's AI Project Manager") as demo:
 
 
 if __name__ == "__main__":
-    # Run Gradio in a thread
     def run_gradio():
         demo.launch(
             server_name="127.0.0.1",
@@ -225,9 +285,7 @@ if __name__ == "__main__":
             theme=gr.themes.Soft(primary_hue="blue", neutral_hue="gray")
         )
 
-    gradio_thread = threading.Thread(target=run_gradio, daemon=True)
-    gradio_thread.start()
+    threading.Thread(target=run_gradio, daemon=True).start()
 
-    # Run Flask on the main port
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
