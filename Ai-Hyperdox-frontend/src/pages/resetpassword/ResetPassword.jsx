@@ -1,10 +1,9 @@
-// src/pages/ResetPassword/ResetPassword.jsx
-import { useState, useEffect } from "react";
-import { useNavigate }         from "react-router-dom";
-import { getAuth, confirmPasswordReset } from "firebase/auth";
-import { httpsCallable }       from "firebase/functions";
-import { functions }           from "../../firebase";
-import Navbar                  from "../../components/Navbar/Navbar";
+import { useState, useEffect }                        from "react";
+import { useNavigate }                                from "react-router-dom";
+import { getAuth, confirmPasswordReset }              from "firebase/auth";
+import { httpsCallable }                              from "firebase/functions";
+import { functions }                                  from "../../firebase";
+import Navbar                                         from "../../components/Navbar/Navbar";
 import "./ResetPassword.css";
 
 function validatePassword(password) {
@@ -76,18 +75,43 @@ export default function ResetPassword() {
     e.preventDefault();
     setError("");
     setSuccess("");
+
     const passErr = validatePassword(newPassword);
     if (passErr) return setError(passErr);
     if (newPassword !== confirmPassword) return setError("Passwords do not match.");
     if (!firebaseLink) return setError("Invalid reset session. Please request a new link.");
+
     try {
       setLoading(true);
+
+      // ── Step 1: Check password history ───────────────────────────
+      const checkPasswordHistory = httpsCallable(functions, "checkPasswordHistory");
+      const { data: historyCheck } = await checkPasswordHistory({ token, newPassword });
+
+      if (historyCheck.reused) {
+        setError("This password was used recently. Please choose a different one.");
+        return;
+      }
+
+      // ── Step 2: Reset in Firebase Auth ───────────────────────────
       const oobCode = new URL(firebaseLink).searchParams.get("oobCode");
       await confirmPasswordReset(auth, oobCode, newPassword);
+
+      // ── Step 3: Save hash to history (non-blocking) ───────────────
+      try {
+        const saveHistory = httpsCallable(functions, "resetPasswordAndSaveHistory");
+        await saveHistory({ token, newPassword });
+      } catch (historyErr) {
+        // Password IS reset — don't fail the UX over history save
+        console.error("Failed to save password history:", historyErr);
+      }
+
       setSuccess("✅ Password reset successfully! Redirecting to sign in...");
       setTimeout(() => navigate("/signin"), 2500);
+
     } catch (err) {
-      if (err.code === "auth/expired-action-code" || err.code === "auth/invalid-action-code") {
+      if (err.code === "auth/expired-action-code" ||
+          err.code === "auth/invalid-action-code") {
         setError("This reset link has expired. Please request a new one.");
       } else if (err.code === "auth/weak-password") {
         setError("Password is too weak. Please choose a stronger one.");

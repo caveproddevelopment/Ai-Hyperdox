@@ -1,7 +1,9 @@
 // src/pages/SignUp/SignUp.jsx
-import { useState } from "react";
+import { useState }          from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth }           from "../../context/AuthContext";
+import { httpsCallable }     from "firebase/functions";
+import { functions }         from "../../firebase";
 import logo from '../../assets/AI Hyperdox Logo Square V2.png';
 import './SignUp.css';
 
@@ -39,19 +41,19 @@ function getPasswordStrength(password) {
 // ── Component ───────────────────────────────────────────────────
 export default function SignUp() {
   const [formData, setFormData] = useState({
-    fullName: "",
-    email: "",
-    password: "",
+    fullName:        "",
+    email:           "",
+    password:        "",
     confirmPassword: "",
-    companyName: "",
-    industry: "",
+    companyName:     "",
+    industry:        "",
   });
 
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [error, setError]             = useState("");
-  const [loading, setLoading]         = useState(false);
-  const [showPassword, setShowPassword]   = useState(false);
-  const [showConfirm, setShowConfirm]     = useState(false);
+  const [fieldErrors,   setFieldErrors]   = useState({});
+  const [error,         setError]         = useState("");
+  const [loading,       setLoading]       = useState(false);
+  const [showPassword,  setShowPassword]  = useState(false);
+  const [showConfirm,   setShowConfirm]   = useState(false);
 
   const { register, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
@@ -87,13 +89,29 @@ export default function SignUp() {
 
     try {
       setLoading(true);
+
+      // ── Step 1: Create Firebase account ──────────────────────────
       await register(formData.email, formData.password, formData.fullName);
+
+      // ── Step 2: Seed password history so signup password is
+      //           blocked if user tries it on first reset ───────────
+      try {
+        const saveInitialPasswordHistory = httpsCallable(functions, "saveInitialPasswordHistory");
+        await saveInitialPasswordHistory({ password: formData.password });
+      } catch (historyErr) {
+        // Non-blocking — account is created, don't fail signup over this
+        console.error("Failed to seed password history:", historyErr);
+      }
+
+      // ── Step 3: Save optional profile data & redirect ─────────────
       localStorage.setItem("hyperdox_profile", JSON.stringify({
-        fullName: formData.fullName,
+        fullName:    formData.fullName,
         companyName: formData.companyName,
-        industry: formData.industry,
+        industry:    formData.industry,
       }));
+
       navigate("/confirm-registration");
+
     } catch (err) {
       console.error("Registration error:", err);
       if (err.code === "auth/email-already-in-use")
@@ -114,7 +132,7 @@ export default function SignUp() {
     try {
       setLoading(true);
       await loginWithGoogle();
-      navigate("/dashboard"); // ← Google users skip email verification, go straight to dashboard
+      navigate("/dashboard"); // Google users skip email verification
     } catch (err) {
       setError("Google sign-in failed. Please try again.");
     } finally {
