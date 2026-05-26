@@ -3,12 +3,16 @@ const { initializeApp }      = require("firebase-admin/app");
 const { getAuth }            = require("firebase-admin/auth");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { defineSecret }       = require("firebase-functions/params");
+const bcrypt                 = require("bcrypt");
 
 initializeApp();
 
 const db = getFirestore();
 
 const stripeSecret = defineSecret("STRIPE_SECRET_KEY");
+
+const SALT_ROUNDS = 12;
+const MAX_HISTORY = 5;
 
 const GAS_URL =
   "https://script.google.com/macros/s/AKfycbzaw6VLnW2tu4_7y4DxCoEpjZnhJosQSZmuYBX9dMx5mDz26zjRfVEw8LNnNAyXxz8/exec";
@@ -165,6 +169,132 @@ exports.validateResetToken = onCall(
 );
 
 // ════════════════════════════════════════════════════════════════
+//  checkPasswordHistory
+// ════════════════════════════════════════════════════════════════
+// NOTE: token is already marked used:true by validateResetToken on
+// page load — so we only pull email from it, no used/expiry recheck
+
+exports.checkPasswordHistory = onCall(
+  { cors: true, invoker: ["public"] },
+  async (request) => {
+    const { token, newPassword } = request.data;
+    if (!token || !newPassword) {
+      throw new HttpsError("invalid-argument", "Missing token or password.");
+    }
+
+    // Pull email from the reset doc — already validated on page load
+    const snap = await db.collection("passwordResets").doc(token).get();
+    if (!snap.exists) {
+      throw new HttpsError("not-found", "Invalid reset token.");
+    }
+    const { email } = snap.data();
+
+    // Get uid from email
+    const user = await getAuth().getUserByEmail(email);
+    const { uid } = user;
+
+    // Fetch password hash history for this user
+    const historySnap = await db.collection("passwordHistory").doc(uid).get();
+    if (!historySnap.exists) {
+      // No history yet — first reset ever, allow it
+      return { reused: false };
+    }
+
+    const { hashes = [] } = historySnap.data();
+
+    // Compare new password against all stored hashes in parallel
+    const results = await Promise.all(
+      hashes.map(hash => bcrypt.compare(newPassword, hash))
+    );
+
+    return { reused: results.some(Boolean) };
+  }
+);
+
+// ════════════════════════════════════════════════════════════════
+//  resetPasswordAndSaveHistory
+// ════════════════════════════════════════════════════════════════
+// Called after confirmPasswordReset succeeds on client —
+// hashes and stores the new password in Firestore history
+
+exports.resetPasswordAndSaveHistory = onCall(
+  { cors: true, invoker: ["public"] },
+  async (request) => {
+    const { token, newPassword } = request.data;
+    if (!token || !newPassword) {
+      throw new HttpsError("invalid-argument", "Missing token or password.");
+    }
+
+    // Pull email from the reset doc
+    const snap = await db.collection("passwordResets").doc(token).get();
+    if (!snap.exists) {
+      throw new HttpsError("not-found", "Invalid reset token.");
+    }
+    const { email } = snap.data();
+
+    // Get uid from email
+    const user = await getAuth().getUserByEmail(email);
+    const { uid } = user;
+
+    // Hash the new password
+    const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+    // Read existing history, prepend new hash, trim to MAX_HISTORY
+    const historyRef  = db.collection("passwordHistory").doc(uid);
+    const historySnap = await historyRef.get();
+    const existing    = historySnap.exists ? (historySnap.data().hashes ?? []) : [];
+
+    const updatedHashes = [newHash, ...existing].slice(0, MAX_HISTORY);
+
+    await historyRef.set({
+      hashes:    updatedHashes,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return { success: true };
+  }
+);
+
+// ════════════════════════════════════════════════════════════════
+//  saveInitialPasswordHistory
+// ════════════════════════════════════════════════════════════════
+// Called once after successful signup — seeds password history so
+// the signup password is blocked on first password reset attempt
+
+exports.saveInitialPasswordHistory = onCall(
+  { cors: true, invoker: ["public"] },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "You must be signed in.");
+    }
+
+    const { password } = request.data;
+    if (!password) {
+      throw new HttpsError("invalid-argument", "Password is required.");
+    }
+
+    const uid = request.auth.uid;
+
+    // Guard: if history already exists don't overwrite — prevents
+    // duplicate calls from re-seeding with a different value
+    const historyRef  = db.collection("passwordHistory").doc(uid);
+    const historySnap = await historyRef.get();
+    if (historySnap.exists) {
+      return { success: true, message: "History already seeded." };
+    }
+
+    // Hash and store the signup password as the first history entry
+    const newHash = await bcrypt.hash(password, SALT_ROUNDS);
+    await historyRef.set({
+      hashes:    [newHash],
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return { success: true };
+  }
+);
+
+// ════════════════════════════════════════════════════════════════
 //  BILLING — savePaymentMethod
 // ════════════════════════════════════════════════════════════════
 
@@ -271,7 +401,6 @@ exports.initiateRun = onCall(
 
     // ── Free run ─────────────────────────────────────────────────
     if (result.status === "free") {
-      // If existingRunId provided, reuse that doc — don't create a new one
       const runId = existingRunId
         ? existingRunId
         : (await db.collection("runs").add({
@@ -308,7 +437,6 @@ exports.initiateRun = onCall(
       );
     }
 
-    // If existingRunId provided, reuse that doc — don't create a new one
     const runId = existingRunId
       ? existingRunId
       : (await db.collection("runs").add({
@@ -329,4 +457,4 @@ exports.initiateRun = onCall(
   }
 );
 
-// v9
+// v11
