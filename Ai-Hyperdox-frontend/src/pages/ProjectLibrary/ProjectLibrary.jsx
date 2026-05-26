@@ -7,6 +7,7 @@ import {
   collection, query, where, getDocs,
   doc, updateDoc, deleteDoc, getDoc,
 } from "firebase/firestore";
+import { getStorage, ref, deleteObject } from "firebase/storage";
 import JSZip             from "jszip";
 import logo              from "../../assets/AI Hyperdox Logo Square V2.png";
 import GoalsScopeIcon    from "../../assets/Documenticon/GoalsscopeIcon.png";
@@ -137,12 +138,40 @@ export default function ProjectLibrary() {
     } catch (err) { console.error(err); }
   }
 
-  // ── Delete run ─────────────────────────────────────────────────
+  // ── Delete run + clean up Firebase Storage files ───────────────
   async function handleDelete(runId) {
     if (!window.confirm("Permanently delete this run? This cannot be undone.")) return;
     try {
+      const run     = runs.find(r => r.id === runId);
+      const storage = getStorage();
+
+      // Delete every stored file from Firebase Storage
+      if (run?.documents) {
+        const storageDeletes = DOC_KEYS
+          .filter(({ key }) => {
+            const val = run.documents[key];
+            return typeof val === "string" && val.startsWith("https://");
+          })
+          .map(({ key }) => {
+            try {
+              const fileRef = ref(storage, run.documents[key]);
+              return deleteObject(fileRef).catch(err =>
+                console.warn("Storage delete skipped for " + key + ":", err.code)
+              );
+            } catch (err) {
+              console.warn("Invalid ref for " + key + ":", err);
+              return Promise.resolve();
+            }
+          });
+
+        await Promise.allSettled(storageDeletes);
+        console.log("Cleaned up " + storageDeletes.length + " file(s) from storage.");
+      }
+
+      // Delete Firestore run document
       await deleteDoc(doc(db, "runs", runId));
       setRuns(prev => prev.filter(r => r.id !== runId));
+
     } catch (err) { console.error(err); }
   }
 
@@ -152,7 +181,10 @@ export default function ProjectLibrary() {
     setZipping(prev => ({ ...prev, [run.id]: true }));
 
     try {
-      const zip = new JSZip();
+      // Get Firebase auth token so the backend accepts the request
+      const token = await currentUser.getIdToken(/* forceRefresh */ true);
+
+      const zip    = new JSZip();
       const folder = zip.folder(
         `${projectName}_${DOC_TYPE_META[run.docType]?.label ?? run.docType}_${formatDate(run)}`
           .replace(/[^a-zA-Z0-9_\-]/g, "_")
@@ -161,36 +193,87 @@ export default function ProjectLibrary() {
       // Collect all available docs for this run
       const available = DOC_KEYS.filter(({ key }) => run.documents[key]);
 
-      // Fetch each file and add to ZIP
-      await Promise.all(
+      if (available.length === 0) {
+        alert("No documents found for this run.");
+        return;
+      }
+
+      // Fetch each file — use allSettled so one failure doesn't abort the rest
+      const results = await Promise.allSettled(
         available.map(async ({ key, filename }) => {
           const url = getDownloadUrl(run.documents[key]);
-          if (!url) return;
-          try {
-            const res = await fetch(url);
-            if (!res.ok) return;
-            const blob = await res.blob();
-            const ext  = getExtension(url);
-            folder.file(`${filename}${ext}`, blob);
-          } catch (err) {
-            console.warn(`Skipped ${key}:`, err);
+          if (!url) throw new Error(`No URL resolved for key: ${key}`);
+
+          // Build headers — always send auth; Firebase Storage signed URLs
+          // ignore unknown headers so this is safe for both backends.
+          const headers = { Authorization: `Bearer ${token}` };
+
+          const res = await fetch(url, { headers });
+
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status} ${res.statusText} — ${key} (${url})`);
           }
+
+          const blob = await res.blob();
+
+          if (blob.size === 0) {
+            throw new Error(`Empty response for key: ${key}`);
+          }
+
+          const ext = getExtension(url);
+          folder.file(`${filename}${ext}`, blob);
+          console.log(`✓ Added ${filename}${ext} (${(blob.size / 1024).toFixed(1)} KB)`);
+          return key;
         })
       );
 
-      // Generate and trigger download
-      const zipBlob  = await zip.generateAsync({ type: "blob" });
-      const zipName  = `${projectName}_Documents_${formatDate(run)}.zip`
+      // Report any failures to console + collect them for the user alert
+      const failed = results
+        .map((r, i) => r.status === "rejected" ? available[i].key : null)
+        .filter(Boolean);
+
+      const succeeded = results.filter(r => r.status === "fulfilled").length;
+
+      if (failed.length > 0) {
+        console.error("Failed to fetch:", failed);
+      }
+
+      if (succeeded === 0) {
+        alert(
+          "Could not download any files.\n\n" +
+          "Possible causes:\n" +
+          "• The backend /download endpoint is not reachable\n" +
+          "• File paths stored in Firestore are incorrect\n" +
+          "• CORS is blocking the requests\n\n" +
+          "Check the browser console for details."
+        );
+        return;
+      }
+
+      // Generate and trigger ZIP download
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const zipName = `${projectName}_Documents_${formatDate(run)}.zip`
         .replace(/[^a-zA-Z0-9_.\-]/g, "_");
-      const link     = document.createElement("a");
-      link.href      = URL.createObjectURL(zipBlob);
-      link.download  = zipName;
+
+      const link    = document.createElement("a");
+      link.href     = URL.createObjectURL(zipBlob);
+      link.download = zipName;
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
+
+      if (failed.length > 0) {
+        alert(
+          `ZIP created with ${succeeded} of ${available.length} files.\n` +
+          `Missing: ${failed.join(", ")}\n\n` +
+          "Check the browser console for details."
+        );
+      }
 
     } catch (err) {
       console.error("ZIP generation failed:", err);
-      alert("Failed to create ZIP. Please try downloading files individually.");
+      alert(`Failed to create ZIP: ${err.message}`);
     } finally {
       setZipping(prev => ({ ...prev, [run.id]: false }));
     }
