@@ -9,7 +9,7 @@
   flex-direction: column;
   align-items: center;
   position: relative;
-  padding-top: 64px; /* offset for fixed topbar */
+  padding-top: 160px;
 }
 
 /* ─── Minimal Topbar ─── */
@@ -18,7 +18,7 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 64px;
+  height: 160px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -34,9 +34,10 @@
 }
 
 .profile-topbar-logo-img {
-  height: 54px;
-  width: auto;
-  display: block;
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  border-radius: 8px;
 }
 
 .profile-topbar-dashboard-btn {
@@ -255,7 +256,8 @@
   }
 
   .profile-topbar-logo-img {
-    height: 42px;
+    width: 44px;
+    height: 44px;
   }
 
   .profile-topbar-dashboard-btn {
