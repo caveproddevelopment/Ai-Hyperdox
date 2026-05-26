@@ -261,3 +261,25 @@
   transition: color 0.15s;
 }
 .lib-delete-btn:hover { color: #c53030; text-decoration: underline; }
+/* Download button variant */
+.lib-action-link--download {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.lib-action-link--download:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Doc count badge */
+.lib-card-doc-count {
+  font-size: 12px;
+  color: #aaa;
+  margin: 4px 0 8px;
+  text-align: center;
+}

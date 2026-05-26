@@ -7,10 +7,11 @@ import {
   collection, query, where, getDocs,
   doc, updateDoc, deleteDoc, getDoc,
 } from "firebase/firestore";
-import logo            from "../../assets/AI Hyperdox Logo Square V2.png";
-import GoalsScopeIcon  from "../../assets/Documenticon/GoalsscopeIcon.png";
-import ExecutionIcon   from "../../assets/Documenticon/ExecutionIcon.png";
-import ProjectPlanIcon from "../../assets/Documenticon/ProjectPlanIcon.png";
+import JSZip             from "jszip";
+import logo              from "../../assets/AI Hyperdox Logo Square V2.png";
+import GoalsScopeIcon    from "../../assets/Documenticon/GoalsscopeIcon.png";
+import ExecutionIcon     from "../../assets/Documenticon/ExecutionIcon.png";
+import ProjectPlanIcon   from "../../assets/Documenticon/ProjectPlanIcon.png";
 import "./ProjectLibrary.css";
 
 const BASE_URL = import.meta.env.VITE_API_URL;
@@ -28,6 +29,17 @@ const DOC_TYPE_META = {
   "execution":    { label: "Execution",       icon: ExecutionIcon   },
   "project-plan": { label: "Project Plan",   icon: ProjectPlanIcon },
 };
+
+// Keys → human-readable filenames inside the ZIP
+const DOC_KEYS = [
+  { key: "goals",         filename: "Goals_Document"              },
+  { key: "scope",         filename: "Scope_Document"              },
+  { key: "risk",          filename: "Risk_Document"               },
+  { key: "milestones",    filename: "Proposed_Milestones_Document" },
+  { key: "resources",     filename: "Resource_Teams_Document"     },
+  { key: "executionPlan", filename: "Execution_Plan_Document"     },
+  { key: "projectPlan",   filename: "Project_Plan_Document"       },
+];
 
 const iconModules = import.meta.glob(
   "../../assets/projecticon/*",
@@ -54,15 +66,24 @@ function getDownloadUrl(fileObj) {
   return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
 }
 
+// Guess file extension from URL or default to .docx
+function getExtension(url) {
+  if (!url) return ".docx";
+  const clean = url.split("?")[0];
+  const match = clean.match(/\.(pdf|docx|doc|txt)$/i);
+  return match ? `.${match[1].toLowerCase()}` : ".docx";
+}
+
 export default function ProjectLibrary() {
   const { projectId }           = useParams();
   const { currentUser, logout } = useAuth();
   const navigate                = useNavigate();
 
-  const [projectName, setProjectName] = useState("");
-  const [projectIcon, setProjectIcon] = useState(null);
-  const [runs,        setRuns]        = useState([]);
-  const [loading,     setLoading]     = useState(true);
+  const [projectName,   setProjectName]   = useState("");
+  const [projectIcon,   setProjectIcon]   = useState(null);
+  const [runs,          setRuns]          = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [zipping,       setZipping]       = useState({}); // { [runId]: true/false }
 
   // ── Fetch project + runs ────────────────────────────────────────
   useEffect(() => {
@@ -70,7 +91,6 @@ export default function ProjectLibrary() {
 
     async function load() {
       try {
-        // Project
         const projSnap = await getDoc(doc(db, "projects", projectId));
         if (!projSnap.exists()) { navigate("/dashboard"); return; }
         const projData = projSnap.data();
@@ -79,7 +99,6 @@ export default function ProjectLibrary() {
         const icon = resolveProjectIcon(projData.icon || projData.iconUrl);
         if (icon) setProjectIcon(icon);
 
-        // Runs that have documents saved
         const q = query(
           collection(db, "runs"),
           where("projectId", "==", projectId),
@@ -88,7 +107,7 @@ export default function ProjectLibrary() {
         const snap = await getDocs(q);
         const list = snap.docs
           .map(d => ({ id: d.id, ...d.data() }))
-          .filter(r => r.documents)                       // only runs with saved docs
+          .filter(r => r.documents)
           .sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
         setRuns(list);
       } catch (err) {
@@ -107,7 +126,6 @@ export default function ProjectLibrary() {
   // ── Mark as primary ────────────────────────────────────────────
   async function handlePrimary(runId, current) {
     try {
-      // uncheck all others, check this one
       await Promise.all(
         runs.map(r =>
           updateDoc(doc(db, "runs", r.id), { isPrimary: r.id === runId ? !current : false })
@@ -128,6 +146,56 @@ export default function ProjectLibrary() {
     } catch (err) { console.error(err); }
   }
 
+  // ── Download all docs as ZIP ───────────────────────────────────
+  async function handleDownloadZip(run) {
+    if (!run.documents) return;
+    setZipping(prev => ({ ...prev, [run.id]: true }));
+
+    try {
+      const zip = new JSZip();
+      const folder = zip.folder(
+        `${projectName}_${DOC_TYPE_META[run.docType]?.label ?? run.docType}_${formatDate(run)}`
+          .replace(/[^a-zA-Z0-9_\-]/g, "_")
+      );
+
+      // Collect all available docs for this run
+      const available = DOC_KEYS.filter(({ key }) => run.documents[key]);
+
+      // Fetch each file and add to ZIP
+      await Promise.all(
+        available.map(async ({ key, filename }) => {
+          const url = getDownloadUrl(run.documents[key]);
+          if (!url) return;
+          try {
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const blob = await res.blob();
+            const ext  = getExtension(url);
+            folder.file(`${filename}${ext}`, blob);
+          } catch (err) {
+            console.warn(`Skipped ${key}:`, err);
+          }
+        })
+      );
+
+      // Generate and trigger download
+      const zipBlob  = await zip.generateAsync({ type: "blob" });
+      const zipName  = `${projectName}_Documents_${formatDate(run)}.zip`
+        .replace(/[^a-zA-Z0-9_.\-]/g, "_");
+      const link     = document.createElement("a");
+      link.href      = URL.createObjectURL(zipBlob);
+      link.download  = zipName;
+      link.click();
+      URL.revokeObjectURL(link.href);
+
+    } catch (err) {
+      console.error("ZIP generation failed:", err);
+      alert("Failed to create ZIP. Please try downloading files individually.");
+    } finally {
+      setZipping(prev => ({ ...prev, [run.id]: false }));
+    }
+  }
+
   // ── Format date ────────────────────────────────────────────────
   function formatDate(run) {
     if (run.createdAt?.toDate) {
@@ -143,16 +211,10 @@ export default function ProjectLibrary() {
     return "—";
   }
 
-  // ── Get first available download URL from a run ────────────────
-  function getPrimaryDownload(run) {
-    if (!run.documents) return null;
-    const keys = ["goals", "scope", "risk", "milestones", "resources",
-                  "executionPlan", "projectPlan"];
-    for (const k of keys) {
-      const url = getDownloadUrl(run.documents[k]);
-      if (url) return url;
-    }
-    return null;
+  // ── Count available docs in a run ─────────────────────────────
+  function countDocs(run) {
+    if (!run.documents) return 0;
+    return DOC_KEYS.filter(({ key }) => run.documents[key]).length;
   }
 
   return (
@@ -211,14 +273,20 @@ export default function ProjectLibrary() {
           ) : (
             <div className="lib-grid">
               {runs.map(run => {
-                const meta        = DOC_TYPE_META[run.docType] ?? { label: run.docType, icon: GoalsScopeIcon };
-                const downloadUrl = getPrimaryDownload(run);
+                const meta      = DOC_TYPE_META[run.docType] ?? { label: run.docType, icon: GoalsScopeIcon };
+                const docCount  = countDocs(run);
+                const isZipping = zipping[run.id] ?? false;
 
                 return (
                   <div key={run.id} className="lib-card">
                     <img src={meta.icon} alt={meta.label} className="lib-card-icon" />
 
                     <p className="lib-card-date">Created: {formatDate(run)}</p>
+
+                    {/* Doc count badge */}
+                    <p className="lib-card-doc-count">
+                      {docCount} document{docCount !== 1 ? "s" : ""} available
+                    </p>
 
                     <div className="lib-card-primary">
                       <span>Mark As The Primary:</span>
@@ -237,17 +305,20 @@ export default function ProjectLibrary() {
                         View Run
                       </Link>
 
-                      {downloadUrl ? (
-                        <a
-                          href={downloadUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="lib-action-link"
+                      {/* ── ZIP download button ── */}
+                      {docCount > 0 ? (
+                        <button
+                          className="lib-action-link lib-action-link--download"
+                          onClick={() => handleDownloadZip(run)}
+                          disabled={isZipping}
+                          title={`Download all ${docCount} documents as ZIP`}
                         >
-                          DOWNLOAD
-                        </a>
+                          {isZipping ? "Zipping..." : `⬇ DOWNLOAD ALL (${docCount})`}
+                        </button>
                       ) : (
-                        <span className="lib-action-link lib-action-link--disabled">DOWNLOAD</span>
+                        <span className="lib-action-link lib-action-link--disabled">
+                          DOWNLOAD
+                        </span>
                       )}
                     </div>
 

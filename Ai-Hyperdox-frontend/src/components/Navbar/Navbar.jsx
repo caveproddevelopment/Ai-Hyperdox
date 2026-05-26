@@ -1,18 +1,19 @@
 // src/components/Navbar/Navbar.jsx
-import { useNavigate, useLocation } from 'react-router-dom';  // ← add useLocation
+import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '../../assets/AI Hyperdox Logo Square V2.png';
 import './Navbar.css';
 
 export default function Navbar() {
   const navigate = useNavigate();
-  const location = useLocation();  // ← add this
+  const location = useLocation();
 
-  // Helper: returns 'nav-link-active' if current path matches
   const activeClass = (path) => location.pathname === path ? 'nav-link-active' : '';
 
   return (
     <nav className="navbar">
-      <div className="nav-logo">
+
+      {/* ── Logo → homepage ── */}
+      <div className="nav-logo" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
         <img src={logo} alt="AI Hyperdox Logo" className="logo-img" />
       </div>
 
@@ -33,6 +34,7 @@ export default function Navbar() {
           Sign Up (For Free)
         </button>
       </div>
+
     </nav>
   );
 }

@@ -33,6 +33,8 @@ export default function Profile() {
     setEmail(currentUser.email || "");
 
     getUserDoc(currentUser.uid).then((data) => {
+      // Firestore is source of truth — overrides stale Auth displayName cache
+      if (data.fullName) setFullName(data.fullName);
       setCompany(data.company   || "");
       setIndustry(data.industry || "");
     });
