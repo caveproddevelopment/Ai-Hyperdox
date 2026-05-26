@@ -283,11 +283,6 @@ export default function ProjectLibrary() {
 
                     <p className="lib-card-date">Created: {formatDate(run)}</p>
 
-                    {/* Doc count badge */}
-                    <p className="lib-card-doc-count">
-                      {docCount} document{docCount !== 1 ? "s" : ""} available
-                    </p>
-
                     <div className="lib-card-primary">
                       <span>Mark As The Primary:</span>
                       <button
@@ -305,7 +300,6 @@ export default function ProjectLibrary() {
                         View Run
                       </Link>
 
-                      {/* ── ZIP download button ── */}
                       {docCount > 0 ? (
                         <button
                           className="lib-action-link lib-action-link--download"
@@ -313,7 +307,7 @@ export default function ProjectLibrary() {
                           disabled={isZipping}
                           title={`Download all ${docCount} documents as ZIP`}
                         >
-                          {isZipping ? "Zipping..." : `⬇ DOWNLOAD ALL (${docCount})`}
+                          {isZipping ? "Zipping..." : "DOWNLOAD"}
                         </button>
                       ) : (
                         <span className="lib-action-link lib-action-link--disabled">
