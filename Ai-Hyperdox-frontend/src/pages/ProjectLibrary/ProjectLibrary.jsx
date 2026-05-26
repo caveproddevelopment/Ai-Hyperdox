@@ -57,22 +57,34 @@ function resolveProjectIcon(iconValue) {
   return PROJECT_ICONS.find(i => i.name === iconValue)?.url ?? null;
 }
 
+// ── FIX 2: default extension is now .pdf (backend only generates PDFs) ──
+function getExtension(url) {
+  if (!url) return ".pdf";
+  const clean = url.split("?")[0];
+  const match = clean.match(/\.(pdf|docx|doc|txt)$/i);
+  return match ? `.${match[1].toLowerCase()}` : ".pdf";
+}
+
+// ── FIX 1 + 2: handle both new { url, path } shape and legacy plain-string URLs ──
 function getDownloadUrl(fileObj) {
   if (!fileObj) return null;
+  // New shape: { url, path }
+  if (typeof fileObj === "object" && fileObj.url) return fileObj.url;
+  // Old shape: plain HTTPS string
   if (typeof fileObj === "string" && fileObj.startsWith("http")) return fileObj;
-  if (typeof fileObj === "string")
-    return `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
-  const filePath = fileObj?.path ?? fileObj?.url ?? fileObj?.name;
+  // Old shape: plain /tmp path → go via backend /download
+  const filePath = fileObj?.path ?? fileObj?.name;
   if (!filePath) return null;
   return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
 }
 
-// Guess file extension from URL or default to .docx
-function getExtension(url) {
-  if (!url) return ".docx";
-  const clean = url.split("?")[0];
-  const match = clean.match(/\.(pdf|docx|doc|txt)$/i);
-  return match ? `.${match[1].toLowerCase()}` : ".docx";
+// Extract the Firebase Storage path needed for deleteObject()
+function getStoragePath(fileObj) {
+  if (!fileObj) return null;
+  // New shape: { url, path }
+  if (typeof fileObj === "object" && fileObj.path) return fileObj.path;
+  // Legacy shape: plain HTTPS signed URL — cannot derive a path, return null
+  return null;
 }
 
 export default function ProjectLibrary() {
@@ -138,23 +150,21 @@ export default function ProjectLibrary() {
     } catch (err) { console.error(err); }
   }
 
-  // ── Delete run + clean up Firebase Storage files ───────────────
+  // ── FIX 1: Delete run + clean up Firebase Storage files ────────
+  // Uses the stored storage path (not the signed URL) for ref()
   async function handleDelete(runId) {
     if (!window.confirm("Permanently delete this run? This cannot be undone.")) return;
     try {
       const run     = runs.find(r => r.id === runId);
       const storage = getStorage();
 
-      // Delete every stored file from Firebase Storage
       if (run?.documents) {
         const storageDeletes = DOC_KEYS
-          .filter(({ key }) => {
-            const val = run.documents[key];
-            return typeof val === "string" && val.startsWith("https://");
-          })
           .map(({ key }) => {
+            const storagePath = getStoragePath(run.documents[key]);
+            if (!storagePath) return null; // no path → skip (legacy signed-URL-only runs)
             try {
-              const fileRef = ref(storage, run.documents[key]);
+              const fileRef = ref(storage, storagePath); // ← path, NOT the signed URL
               return deleteObject(fileRef).catch(err =>
                 console.warn("Storage delete skipped for " + key + ":", err.code)
               );
@@ -162,10 +172,13 @@ export default function ProjectLibrary() {
               console.warn("Invalid ref for " + key + ":", err);
               return Promise.resolve();
             }
-          });
+          })
+          .filter(Boolean);
 
-        await Promise.allSettled(storageDeletes);
-        console.log("Cleaned up " + storageDeletes.length + " file(s) from storage.");
+        if (storageDeletes.length > 0) {
+          await Promise.allSettled(storageDeletes);
+          console.log("Cleaned up " + storageDeletes.length + " file(s) from storage.");
+        }
       }
 
       // Delete Firestore run document
@@ -220,6 +233,7 @@ export default function ProjectLibrary() {
             throw new Error(`Empty response for key: ${key}`);
           }
 
+          // ── FIX 2: extension now correctly defaults to .pdf ──
           const ext = getExtension(url);
           folder.file(`${filename}${ext}`, blob);
           console.log(`✓ Added ${filename}${ext} (${(blob.size / 1024).toFixed(1)} KB)`);

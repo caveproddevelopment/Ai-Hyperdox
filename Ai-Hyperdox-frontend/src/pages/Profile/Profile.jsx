@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import Navbar from "../../components/Navbar/Navbar";
+import logo from "../../assets/AI Hyperdox Logo Square V2.png";
 import "./Profile.css";
 
 export default function Profile() {
@@ -33,7 +33,6 @@ export default function Profile() {
     setEmail(currentUser.email || "");
 
     getUserDoc(currentUser.uid).then((data) => {
-      // Firestore is source of truth — overrides stale Auth displayName cache
       if (data.fullName) setFullName(data.fullName);
       setCompany(data.company   || "");
       setIndustry(data.industry || "");
@@ -98,14 +97,16 @@ export default function Profile() {
 
   return (
     <div className="profile-page">
-      <Navbar />
 
-      {/* ── LEFT SIDEBAR ── */}
-      <div className="profile-sidebar">
-        <button className="sidebar-btn" onClick={() => navigate("/dashboard")}>
+      {/* ── Minimal Header ── */}
+      <header className="profile-topbar">
+        <div className="profile-topbar-logo" onClick={() => navigate("/dashboard")} style={{ cursor: "pointer" }}>
+          <img src={logo} alt="AI Hyperdox Logo" className="profile-topbar-logo-img" />
+        </div>
+        <button className="profile-topbar-dashboard-btn" onClick={() => navigate("/dashboard")}>
           ← Dashboard
         </button>
-      </div>
+      </header>
 
       <div className="profile-card">
         <h1 className="profile-headline">Adjust Your Profile Settings</h1>
