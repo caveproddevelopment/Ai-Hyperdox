@@ -7,7 +7,7 @@ import {
   collection, query, where, getDocs,
   doc, updateDoc, deleteDoc, getDoc,
 } from "firebase/firestore";
-import { getStorage, ref, deleteObject } from "firebase/storage";
+import { getStorage, ref, deleteObject, getBytes } from "firebase/storage";
 import JSZip             from "jszip";
 import logo              from "../../assets/AI Hyperdox Logo Square V2.png";
 import GoalsScopeIcon    from "../../assets/Documenticon/GoalsscopeIcon.png";
@@ -31,15 +31,14 @@ const DOC_TYPE_META = {
   "project-plan": { label: "Project Plan",   icon: ProjectPlanIcon },
 };
 
-// Keys → human-readable filenames inside the ZIP
 const DOC_KEYS = [
-  { key: "goals",         filename: "Goals_Document"              },
-  { key: "scope",         filename: "Scope_Document"              },
-  { key: "risk",          filename: "Risk_Document"               },
+  { key: "goals",         filename: "Goals_Document"               },
+  { key: "scope",         filename: "Scope_Document"               },
+  { key: "risk",          filename: "Risk_Document"                },
   { key: "milestones",    filename: "Proposed_Milestones_Document" },
-  { key: "resources",     filename: "Resource_Teams_Document"     },
-  { key: "executionPlan", filename: "Execution_Plan_Document"     },
-  { key: "projectPlan",   filename: "Project_Plan_Document"       },
+  { key: "resources",     filename: "Resource_Teams_Document"      },
+  { key: "executionPlan", filename: "Execution_Plan_Document"      },
+  { key: "projectPlan",   filename: "Project_Plan_Document"        },
 ];
 
 const iconModules = import.meta.glob(
@@ -57,34 +56,95 @@ function resolveProjectIcon(iconValue) {
   return PROJECT_ICONS.find(i => i.name === iconValue)?.url ?? null;
 }
 
-// ── FIX 2: default extension is now .pdf (backend only generates PDFs) ──
-function getExtension(url) {
-  if (!url) return ".pdf";
-  const clean = url.split("?")[0];
-  const match = clean.match(/\.(pdf|docx|doc|txt)$/i);
-  return match ? `.${match[1].toLowerCase()}` : ".pdf";
-}
-
-// ── FIX 1 + 2: handle both new { url, path } shape and legacy plain-string URLs ──
-function getDownloadUrl(fileObj) {
-  if (!fileObj) return null;
-  // New shape: { url, path }
-  if (typeof fileObj === "object" && fileObj.url) return fileObj.url;
-  // Old shape: plain HTTPS string
-  if (typeof fileObj === "string" && fileObj.startsWith("http")) return fileObj;
-  // Old shape: plain /tmp path → go via backend /download
-  const filePath = fileObj?.path ?? fileObj?.name;
-  if (!filePath) return null;
-  return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
-}
-
-// Extract the Firebase Storage path needed for deleteObject()
 function getStoragePath(fileObj) {
   if (!fileObj) return null;
-  // New shape: { url, path }
   if (typeof fileObj === "object" && fileObj.path) return fileObj.path;
-  // Legacy shape: plain HTTPS signed URL — cannot derive a path, return null
   return null;
+}
+
+// ── Download a single file as a Blob ─────────────────────────────────────────
+// Strategy 1 (preferred): Firebase Storage SDK getBytes() — authenticated,
+//   no CORS issues, works even if the stored signed URL has expired.
+// Strategy 2: Route through backend /download proxy — avoids expired signed
+//   URLs by letting the server re-sign or re-fetch the file.
+async function fetchFileBlob(fileObj) {
+  // ── Strategy 1: SDK path (avoids CORS entirely) ──────────────────
+  const storagePath = getStoragePath(fileObj);
+  if (storagePath) {
+    try {
+      const storage = getStorage();
+      const fileRef = ref(storage, storagePath);
+      const bytes   = await getBytes(fileRef);          // ArrayBuffer
+      return new Blob([bytes], { type: "application/pdf" });
+    } catch (sdkErr) {
+      // If SDK fails (e.g. path wrong), fall through to Strategy 2
+      console.warn("SDK getBytes failed, falling back to proxy fetch:", sdkErr?.code ?? sdkErr?.message);
+    }
+  }
+
+  // ── Strategy 2: Resolve URL, then route through backend proxy ────
+  // Direct signed URLs expire quickly; routing through BASE_URL/download
+  // lets the backend re-sign or serve the file reliably.
+  let resolvedUrl = null;
+
+  if (typeof fileObj === "string") {
+    if (fileObj.startsWith("http")) {
+      resolvedUrl = fileObj;                                                      // already a full URL
+    } else {
+      resolvedUrl = `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;  // plain backend path
+    }
+  } else if (typeof fileObj === "object") {
+    if (fileObj?.url) {
+      // url may be a full http URL or a plain backend path like /tmp/...
+      resolvedUrl = fileObj.url.startsWith("http")
+        ? fileObj.url
+        : `${BASE_URL}/download?path=${encodeURIComponent(fileObj.url)}`;
+    } else if (fileObj?.path) {
+      resolvedUrl = `${BASE_URL}/download?path=${encodeURIComponent(fileObj.path)}`;
+    } else if (fileObj?.name) {
+      resolvedUrl = `${BASE_URL}/download?path=${encodeURIComponent(fileObj.name)}`;
+    }
+  }
+
+  if (!resolvedUrl) {
+    // ── Last-resort fallback ──────────────────────────────────────
+    // If fileObj is some other shape (Firestore Timestamp, nested object, etc.)
+    // try converting it to a string and sending to the backend proxy.
+    const coerced = typeof fileObj === "object" && fileObj !== null
+      ? (fileObj?.downloadURL ?? fileObj?.fileUrl ?? fileObj?.uri ?? fileObj?.link ?? null)
+      : null;
+
+    if (coerced && typeof coerced === "string") {
+      resolvedUrl = coerced.startsWith("http")
+        ? `${BASE_URL}/download?path=${encodeURIComponent(coerced)}`
+        : `${BASE_URL}/download?path=${encodeURIComponent(coerced)}`;
+    }
+  }
+
+  if (!resolvedUrl) throw new Error("No download URL or storage path available.");
+
+  // KEY FIX: if it's an external signed URL (not already our backend),
+  // proxy it through the backend to avoid expiry & CORS issues.
+  const fetchUrl = resolvedUrl.startsWith("http") && !resolvedUrl.startsWith(BASE_URL)
+    ? `${BASE_URL}/download?path=${encodeURIComponent(resolvedUrl)}`
+    : resolvedUrl;
+
+  const res = await fetch(fetchUrl);
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+
+  // Guard: reject HTML (expired signed URL served the SPA's index.html)
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.startsWith("text/html")) {
+    throw new Error(
+      "Received an HTML page instead of a PDF. The stored URL has expired — " +
+      "please regenerate the documents."
+    );
+  }
+
+  const blob = await res.blob();
+  if (blob.size === 0) throw new Error("Received empty file.");
+
+  return blob;
 }
 
 export default function ProjectLibrary() {
@@ -92,16 +152,15 @@ export default function ProjectLibrary() {
   const { currentUser, logout } = useAuth();
   const navigate                = useNavigate();
 
-  const [projectName,   setProjectName]   = useState("");
-  const [projectIcon,   setProjectIcon]   = useState(null);
-  const [runs,          setRuns]          = useState([]);
-  const [loading,       setLoading]       = useState(true);
-  const [zipping,       setZipping]       = useState({}); // { [runId]: true/false }
+  const [projectName, setProjectName] = useState("");
+  const [projectIcon, setProjectIcon] = useState(null);
+  const [runs,        setRuns]        = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [zipping,     setZipping]     = useState({});
 
-  // ── Fetch project + runs ────────────────────────────────────────
+  // ── Fetch project + runs ──────────────────────────────────────────────────
   useEffect(() => {
     if (!projectId || !currentUser) return;
-
     async function load() {
       try {
         const projSnap = await getDoc(doc(db, "projects", projectId));
@@ -136,7 +195,7 @@ export default function ProjectLibrary() {
     try { await logout(); navigate("/signin"); } catch {}
   }
 
-  // ── Mark as primary ────────────────────────────────────────────
+  // ── Mark as primary ───────────────────────────────────────────────────────
   async function handlePrimary(runId, current) {
     try {
       await Promise.all(
@@ -150,126 +209,91 @@ export default function ProjectLibrary() {
     } catch (err) { console.error(err); }
   }
 
-  // ── FIX 1: Delete run + clean up Firebase Storage files ────────
-  // Uses the stored storage path (not the signed URL) for ref()
+  // ── Delete run + Firebase Storage files ──────────────────────────────────
+  // FIX: Storage cleanup is best-effort. A storage error logs a warning but
+  // does NOT block the Firestore delete — the run record is always removed.
   async function handleDelete(runId) {
     if (!window.confirm("Permanently delete this run? This cannot be undone.")) return;
-    try {
-      const run     = runs.find(r => r.id === runId);
-      const storage = getStorage();
 
-      if (run?.documents) {
-        const storageDeletes = DOC_KEYS
-          .map(({ key }) => {
-            const storagePath = getStoragePath(run.documents[key]);
-            if (!storagePath) return null; // no path → skip (legacy signed-URL-only runs)
-            try {
-              const fileRef = ref(storage, storagePath); // ← path, NOT the signed URL
-              return deleteObject(fileRef).catch(err =>
-                console.warn("Storage delete skipped for " + key + ":", err.code)
-              );
-            } catch (err) {
-              console.warn("Invalid ref for " + key + ":", err);
-              return Promise.resolve();
-            }
-          })
-          .filter(Boolean);
+    const run = runs.find(r => r.id === runId);
+    if (!run) return;
 
-        if (storageDeletes.length > 0) {
-          await Promise.allSettled(storageDeletes);
-          console.log("Cleaned up " + storageDeletes.length + " file(s) from storage.");
+    // ── Step 1: Best-effort storage cleanup ─────────────────────────
+    const storage = getStorage();
+    if (run.documents) {
+      const storageDeletes = DOC_KEYS
+        .map(({ key }) => getStoragePath(run.documents[key]))
+        .filter(Boolean)
+        .map(p => deleteObject(ref(storage, p)));
+
+      if (storageDeletes.length > 0) {
+        const results = await Promise.allSettled(storageDeletes);
+        const failed  = results.filter(r =>
+          r.status === "rejected" &&
+          r.reason?.code !== "storage/object-not-found"  // already gone = fine
+        );
+        if (failed.length > 0) {
+          // Warn but do NOT return — Firestore delete still proceeds below
+          console.warn(
+            `${failed.length} storage file(s) could not be deleted (manual cleanup may be needed).`,
+            failed.map(f => f.reason?.code ?? f.reason?.message)
+          );
         }
       }
+    }
 
-      // Delete Firestore run document
+    // ── Step 2: Always delete the Firestore run document ────────────
+    try {
       await deleteDoc(doc(db, "runs", runId));
       setRuns(prev => prev.filter(r => r.id !== runId));
-
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error("Firestore delete failed:", err);
+      alert("Could not delete the run record:\n" + err.message);
+    }
   }
 
-  // ── Download all docs as ZIP ───────────────────────────────────
+  // ── Download all docs as ZIP ──────────────────────────────────────────────
   async function handleDownloadZip(run) {
     if (!run.documents) return;
     setZipping(prev => ({ ...prev, [run.id]: true }));
 
     try {
-      // Get Firebase auth token so the backend accepts the request
-      const token = await currentUser.getIdToken(/* forceRefresh */ true);
-
       const zip    = new JSZip();
       const folder = zip.folder(
         `${projectName}_${DOC_TYPE_META[run.docType]?.label ?? run.docType}_${formatDate(run)}`
           .replace(/[^a-zA-Z0-9_\-]/g, "_")
       );
 
-      // Collect all available docs for this run
       const available = DOC_KEYS.filter(({ key }) => run.documents[key]);
+      if (available.length === 0) { alert("No documents found for this run."); return; }
 
-      if (available.length === 0) {
-        alert("No documents found for this run.");
-        return;
-      }
-
-      // Fetch each file — use allSettled so one failure doesn't abort the rest
       const results = await Promise.allSettled(
         available.map(async ({ key, filename }) => {
-          const url = getDownloadUrl(run.documents[key]);
-          if (!url) throw new Error(`No URL resolved for key: ${key}`);
-
-          // Firebase Storage signed URLs already contain auth in their query
-          // params — adding an Authorization header causes GCS to reject the
-          // request and return 0 bytes. Only send the header for the fallback
-          // /download backend endpoint.
-          const isFirebaseUrl =
-            url.includes("storage.googleapis.com") ||
-            url.includes("firebasestorage.app");
-          const headers = isFirebaseUrl ? {} : { Authorization: `Bearer ${token}` };
-
-          const res = await fetch(url, { headers });
-
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status} ${res.statusText} — ${key} (${url})`);
-          }
-
-          const blob = await res.blob();
-
-          if (blob.size === 0) {
-            throw new Error(`Empty response for key: ${key}`);
-          }
-
-          // ── FIX 2: extension now correctly defaults to .pdf ──
-          const ext = getExtension(url);
-          folder.file(`${filename}${ext}`, blob);
-          console.log(`✓ Added ${filename}${ext} (${(blob.size / 1024).toFixed(1)} KB)`);
+          const blob = await fetchFileBlob(run.documents[key]);
+          folder.file(`${filename}.pdf`, blob);
+          console.log(`✓ ${filename}.pdf  (${(blob.size / 1024).toFixed(1)} KB)`);
           return key;
         })
       );
 
-      // Report any failures to console + collect them for the user alert
-      const failed = results
-        .map((r, i) => r.status === "rejected" ? available[i].key : null)
+      const failed    = results
+        .map((r, i) => r.status === "rejected"
+          ? { key: available[i].key, reason: r.reason?.message ?? "Unknown error" }
+          : null)
         .filter(Boolean);
-
       const succeeded = results.filter(r => r.status === "fulfilled").length;
 
-      if (failed.length > 0) {
-        console.error("Failed to fetch:", failed);
-      }
+      if (failed.length > 0) console.error("Failed documents:", failed);
 
       if (succeeded === 0) {
         alert(
-          "Could not download any files.\n\n" +
-          "Possible causes:\n" +
-          "• The backend /download endpoint is not reachable\n" +
-          "• File paths stored in Firestore are incorrect\n" +
-          "• CORS is blocking the requests\n\n" +
-          "Check the browser console for details."
+          `Could not download any files.\n\n` +
+          `Reason: ${failed[0]?.reason ?? "Unknown"}\n\n` +
+          `Check the browser console for full details.`
         );
         return;
       }
 
-      // Generate and trigger ZIP download
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const zipName = `${projectName}_Documents_${formatDate(run)}.zip`
         .replace(/[^a-zA-Z0-9_.\-]/g, "_");
@@ -284,21 +308,21 @@ export default function ProjectLibrary() {
 
       if (failed.length > 0) {
         alert(
-          `ZIP created with ${succeeded} of ${available.length} files.\n` +
-          `Missing: ${failed.join(", ")}\n\n` +
-          "Check the browser console for details."
+          `ZIP created with ${succeeded} of ${available.length} files.\n\n` +
+          `Missing:\n` +
+          failed.map(f => `• ${f.key}: ${f.reason}`).join("\n")
         );
       }
 
     } catch (err) {
       console.error("ZIP generation failed:", err);
-      alert(`Failed to create ZIP: ${err.message}`);
+      alert(`Failed to create ZIP:\n\n${err.message}`);
     } finally {
       setZipping(prev => ({ ...prev, [run.id]: false }));
     }
   }
 
-  // ── Format date ────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
   function formatDate(run) {
     if (run.createdAt?.toDate) {
       return run.createdAt.toDate().toLocaleDateString("en-US", {
@@ -313,7 +337,6 @@ export default function ProjectLibrary() {
     return "—";
   }
 
-  // ── Count available docs in a run ─────────────────────────────
   function countDocs(run) {
     if (!run.documents) return 0;
     return DOC_KEYS.filter(({ key }) => run.documents[key]).length;
@@ -327,9 +350,7 @@ export default function ProjectLibrary() {
         <Link to="/" className="lib-logo-wrap">
           <img src={logo} alt="AI Hyperdox" className="lib-logo" />
         </Link>
-
         <Link to="/dashboard" className="lib-back-link">Back To Projects</Link>
-
         {projectName && (
           <div className="lib-project-section">
             <span className="lib-project-label">{projectName}:</span>
@@ -338,13 +359,11 @@ export default function ProjectLibrary() {
             <Link to={`/project/${projectId}/run`}     className="lib-project-link">New Document Run</Link>
           </div>
         )}
-
         <nav className="lib-nav">
           {NAV_LINKS.map(({ label, to }) => (
             <Link key={to} to={to} className="lib-nav-link">{label}</Link>
           ))}
         </nav>
-
         <div className="lib-sidebar-footer">
           <button className="lib-signout-btn" onClick={handleLogout}>Sign Out</button>
         </div>
@@ -378,13 +397,10 @@ export default function ProjectLibrary() {
                 const meta      = DOC_TYPE_META[run.docType] ?? { label: run.docType, icon: GoalsScopeIcon };
                 const docCount  = countDocs(run);
                 const isZipping = zipping[run.id] ?? false;
-
                 return (
                   <div key={run.id} className="lib-card">
                     <img src={meta.icon} alt={meta.label} className="lib-card-icon" />
-
                     <p className="lib-card-date">Created: {formatDate(run)}</p>
-
                     <div className="lib-card-primary">
                       <span>Mark As The Primary:</span>
                       <button
@@ -393,15 +409,10 @@ export default function ProjectLibrary() {
                         title={run.isPrimary ? "Unmark as primary" : "Mark as primary"}
                       />
                     </div>
-
                     <div className="lib-card-actions">
-                      <Link
-                        to={`/project/${projectId}/run-view/${run.id}`}
-                        className="lib-action-link"
-                      >
+                      <Link to={`/project/${projectId}/run-view/${run.id}`} className="lib-action-link">
                         View Run
                       </Link>
-
                       {docCount > 0 ? (
                         <button
                           className="lib-action-link lib-action-link--download"
@@ -412,16 +423,10 @@ export default function ProjectLibrary() {
                           {isZipping ? "Zipping..." : "DOWNLOAD"}
                         </button>
                       ) : (
-                        <span className="lib-action-link lib-action-link--disabled">
-                          DOWNLOAD
-                        </span>
+                        <span className="lib-action-link lib-action-link--disabled">DOWNLOAD</span>
                       )}
                     </div>
-
-                    <button
-                      className="lib-delete-btn"
-                      onClick={() => handleDelete(run.id)}
-                    >
+                    <button className="lib-delete-btn" onClick={() => handleDelete(run.id)}>
                       Delete Permanently
                     </button>
                   </div>
