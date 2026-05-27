@@ -10,7 +10,6 @@ import os
 import threading
 import json
 import uuid
-from datetime import timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_file, abort
@@ -27,8 +26,8 @@ def init_firebase():
     if _firebase_ready:
         return True
     try:
-        sa_json  = os.getenv("FIREBASE_SERVICE_ACCOUNT")   # full JSON string
-        bucket   = os.getenv("FIREBASE_STORAGE_BUCKET")    # e.g. your-project.appspot.com
+        sa_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")   # full JSON string
+        bucket  = os.getenv("FIREBASE_STORAGE_BUCKET")    # e.g. your-project.appspot.com
         if not sa_json or not bucket:
             print("⚠ Firebase env vars not set — files will use /tmp fallback.")
             return False
@@ -45,11 +44,16 @@ def init_firebase():
 def upload_to_storage(local_path: str, project_name: str, doc_title: str):
     """
     Upload a local PDF to Firebase Storage.
-    Returns (signed_url, storage_path).
+    Returns (public_url, storage_path).
     Falls back to (local_path, None) if Firebase is not configured.
+
+    FIX: replaced generate_signed_url() (max 7 days) with make_public() +
+    blob.public_url — no expiry at all, works forever.
+    Downloads from the frontend use the Firebase SDK getBytes() via the
+    storage path anyway, so the URL field is just a convenience reference.
     """
     if not init_firebase():
-        return local_path, None   # fallback — /download endpoint still works while server is alive
+        return local_path, None   # fallback — /download endpoint works while server is alive
 
     try:
         filename    = os.path.basename(local_path)
@@ -59,13 +63,13 @@ def upload_to_storage(local_path: str, project_name: str, doc_title: str):
         blob       = bucket_obj.blob(destination)
         blob.upload_from_filename(local_path, content_type="application/pdf")
 
-        # Signed URL valid for 10 years — effectively permanent
-        url = blob.generate_signed_url(
-            expiration=timedelta(days=3650),
-            method="GET",
-            version="v4",
-        )
-        print(f"✅ Uploaded {filename} → {url[:80]}...")
+        # ── FIX: use public URL instead of signed URL ──────────────
+        # generate_signed_url() has a hard limit of 7 days (604800 s).
+        # make_public() + blob.public_url never expires.
+        blob.make_public()
+        url = blob.public_url
+
+        print(f"✅ Uploaded {filename} → gs://{destination}")
         return url, destination   # ← return BOTH url and storage path
 
     except Exception as e:
@@ -167,11 +171,11 @@ Uploaded Documents Content:
 Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 """
     prompts = {
-        "Goals Document":                  f"{context}\nGenerate SMART goals for this project.",
-        "Scope Document":                  f"{context}\nWrite a clear Project Scope statement (Inclusions, Exclusions, Assumptions, Constraints).",
-        "Risk Document":                   f"{context}\nIdentify key project risks with Impact, Likelihood, and Mitigation strategies.",
-        "Proposed Milestones Document":    f"{context}\nList proposed milestones with deliverables and target dates.",
-        "Resource Teams Required Document":f"{context}\nIdentify resource teams required with roles, skills, and estimated effort.",
+        "Goals Document":                   f"{context}\nGenerate SMART goals for this project.",
+        "Scope Document":                   f"{context}\nWrite a clear Project Scope statement (Inclusions, Exclusions, Assumptions, Constraints).",
+        "Risk Document":                    f"{context}\nIdentify key project risks with Impact, Likelihood, and Mitigation strategies.",
+        "Proposed Milestones Document":     f"{context}\nList proposed milestones with deliverables and target dates.",
+        "Resource Teams Required Document": f"{context}\nIdentify resource teams required with roles, skills, and estimated effort.",
     }
 
     pdfs = {}
@@ -186,13 +190,13 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
         content    = completion.choices[0].message.content
         local_path = create_pdf(project_name, title, content)
 
-        # ── Upload to Firebase Storage → get permanent URL + storage path ──
+        # Upload to Firebase Storage → get permanent public URL + storage path
         permanent_url, storage_path = upload_to_storage(local_path, project_name, title)
 
         # Store both url and path so the frontend can delete from Storage later
         pdfs[title] = {
             "url":  permanent_url,
-            "path": storage_path,   # None when using /tmp fallback
+            "path": storage_path,   # None only when using /tmp fallback
         }
 
     return (
