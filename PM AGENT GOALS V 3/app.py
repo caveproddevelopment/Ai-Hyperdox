@@ -63,13 +63,13 @@ def upload_to_storage(local_path: str, project_name: str, doc_title: str):
         blob       = bucket_obj.blob(destination)
         blob.upload_from_filename(local_path, content_type="application/pdf")
 
-        # ── FIX: use public URL instead of signed URL ──────────────
-        # generate_signed_url() has a hard limit of 7 days (604800 s).
-        # make_public() + blob.public_url never expires.
-        blob.make_public()
-        url = blob.public_url
+        # Uniform bucket-level access is enabled on this bucket, so per-object
+        # ACLs (make_public / signed URLs) are not allowed.
+        # The frontend downloads via Firebase SDK getBytes() using the storage
+        # path — no public URL is needed. Store the GCS URI as a reference only.
+        url = f"gs://{bucket_obj.name}/{destination}"
 
-        print(f"✅ Uploaded {filename} → gs://{destination}")
+        print(f"✅ Uploaded {filename} → {url}")
         return url, destination   # ← return BOTH url and storage path
 
     except Exception as e:
