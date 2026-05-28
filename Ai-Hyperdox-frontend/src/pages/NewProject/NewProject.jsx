@@ -93,7 +93,7 @@ export default function NewProject() {
 
       {/* ── Sidebar ── */}
       <aside className="np-sidebar">
-        <Link to="/" className="np-logo-wrap">
+        <Link to="/dashboard" className="np-logo-wrap">
           <div className="np-logo-icon">
             <img src={logo} alt="AI Hyperdox" />
           </div>

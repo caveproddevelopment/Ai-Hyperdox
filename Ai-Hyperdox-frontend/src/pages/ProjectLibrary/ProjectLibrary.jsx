@@ -347,7 +347,7 @@ export default function ProjectLibrary() {
 
       {/* ── Sidebar ── */}
       <aside className="lib-sidebar">
-        <Link to="/" className="lib-logo-wrap">
+        <Link to="/dashboard" className="lib-logo-wrap">
           <img src={logo} alt="AI Hyperdox" className="lib-logo" />
         </Link>
         <Link to="/dashboard" className="lib-back-link">Back To Projects</Link>

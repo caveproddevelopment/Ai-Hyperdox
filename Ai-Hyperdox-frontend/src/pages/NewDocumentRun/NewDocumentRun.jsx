@@ -74,7 +74,7 @@ export default function NewDocumentRun() {
 
       {/* ── Sidebar ── */}
       <aside className="ndr-sidebar">
-        <Link to="/" className="ndr-logo-wrap">
+        <Link to="/dashboard" className="ndr-logo-wrap">
           <div className="ndr-logo-icon">
             <img src={logo} alt="AI Hyperdox" />
           </div>

@@ -147,7 +147,7 @@ export default function EditProject() {
 
       {/* ── Sidebar ── */}
       <aside className="ep-sidebar">
-        <Link to="/" className="ep-logo-wrap">
+        <Link to="/dashboard" className="ep-logo-wrap">
           <div className="ep-logo-icon">
             <img src={logo} alt="AI Hyperdox" />
           </div>

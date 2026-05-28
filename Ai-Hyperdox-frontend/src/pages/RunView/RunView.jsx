@@ -1,19 +1,21 @@
-// src/pages/RunView/RunView.jsx
+// src/pages/ProjectLibrary/ProjectLibrary.jsx
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { db, functions } from "../../firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
-import logo            from "../../assets/AI Hyperdox Logo Square V2.png";
-import GoalsScopeIcon  from "../../assets/Documenticon/GoalsscopeIcon.png";
-import ExecutionIcon   from "../../assets/Documenticon/ExecutionIcon.png";
-import ProjectPlanIcon from "../../assets/Documenticon/ProjectPlanIcon.png";
-import "./RunView.css";
+import { db } from "../../firebase";
+import {
+  collection, query, where, getDocs,
+  doc, updateDoc, deleteDoc, getDoc,
+} from "firebase/firestore";
+import { getStorage, ref, deleteObject, getBytes } from "firebase/storage";
+import JSZip             from "jszip";
+import logo              from "../../assets/AI Hyperdox Logo Square V2.png";
+import GoalsScopeIcon    from "../../assets/Documenticon/GoalsscopeIcon.png";
+import ExecutionIcon     from "../../assets/Documenticon/ExecutionIcon.png";
+import ProjectPlanIcon   from "../../assets/Documenticon/ProjectPlanIcon.png";
+import "./ProjectLibrary.css";
 
-const BASE_URL       = import.meta.env.VITE_API_URL;
-const MAX_FILE_MB    = 2;
-const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+const BASE_URL = import.meta.env.VITE_API_URL;
 
 const NAV_LINKS = [
   { label: "Products",     to: "/products"     },
@@ -29,445 +31,410 @@ const DOC_TYPE_META = {
   "project-plan": { label: "Project Plan",   icon: ProjectPlanIcon },
 };
 
-const DOC_TYPE_CONFIG = {
-  "goals-scope": {
-    outputDocs: [
-      { key: "goals",      label: "Goals Document (Download)"                   },
-      { key: "scope",      label: "Scope Document (Download)"                   },
-      { key: "risk",       label: "Risk Document (Download)"                    },
-      { key: "milestones", label: "Proposed Milestones Document (Download)"     },
-      { key: "resources",  label: "Resource Teams Required Document (Download)" },
-    ],
-    buildPayload: (form) => ({
-      data: [form.projectName, form.problem, form.summary, form.longDesc, []],
-      api_name: "/generate_documents",
-    }),
-    parseResponse: (data) => {
-      const [statusMsg, goals, scope, risk, milestones, resources] = data;
-      return { statusMsg, docs: { goals, scope, risk, milestones, resources } };
-    },
-  },
-  "execution": {
-    outputDocs: [
-      { key: "executionPlan", label: "Execution Plan Document (Download)" },
-    ],
-    buildPayload: (form) => ({
-      data: [form.projectName, form.problem, form.summary, form.longDesc, []],
-      api_name: "/generate_execution",
-    }),
-    parseResponse: (data) => {
-      const [statusMsg, executionPlan] = data;
-      return { statusMsg, docs: { executionPlan } };
-    },
-  },
-  "project-plan": {
-    outputDocs: [
-      { key: "projectPlan", label: "Project Plan Document (Download)" },
-    ],
-    buildPayload: (form) => ({
-      data: [form.projectName, form.problem, form.summary, form.longDesc, []],
-      api_name: "/generate_project_plan",
-    }),
-    parseResponse: (data) => {
-      const [statusMsg, projectPlan] = data;
-      return { statusMsg, docs: { projectPlan } };
-    },
-  },
-};
+const DOC_KEYS = [
+  { key: "goals",         filename: "Goals_Document"               },
+  { key: "scope",         filename: "Scope_Document"               },
+  { key: "risk",          filename: "Risk_Document"                },
+  { key: "milestones",    filename: "Proposed_Milestones_Document" },
+  { key: "resources",     filename: "Resource_Teams_Document"      },
+  { key: "executionPlan", filename: "Execution_Plan_Document"      },
+  { key: "projectPlan",   filename: "Project_Plan_Document"        },
+];
 
-function getDownloadUrl(fileObj) {
-  if (!fileObj) return null;
-  if (typeof fileObj === "string" && fileObj.startsWith("http")) return fileObj;
-  if (typeof fileObj === "string")
-    return `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
-  const filePath = fileObj?.path ?? fileObj?.url ?? fileObj?.name;
-  if (!filePath) return null;
-  return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
+const iconModules = import.meta.glob(
+  "../../assets/projecticon/*",
+  { eager: true, query: "?url", import: "default" }
+);
+const PROJECT_ICONS = Object.entries(iconModules).map(([path, url]) => ({
+  name: path.split("/").pop(),
+  url,
+}));
+
+function resolveProjectIcon(iconValue) {
+  if (!iconValue) return null;
+  if (/^https?:\/\//.test(iconValue) || iconValue.startsWith("/")) return iconValue;
+  return PROJECT_ICONS.find(i => i.name === iconValue)?.url ?? null;
 }
 
-export default function RunView() {
-  const { projectId, runId } = useParams();
+function getStoragePath(fileObj) {
+  if (!fileObj) return null;
+  if (typeof fileObj === "object" && fileObj.path) return fileObj.path;
+  return null;
+}
+
+// ── Download a single file as a Blob ─────────────────────────────────────────
+// Strategy 1 (preferred): Firebase Storage SDK getBytes() — authenticated,
+//   no CORS issues, works even if the stored signed URL has expired.
+// Strategy 2: Route through backend /download proxy — avoids expired signed
+//   URLs by letting the server re-sign or re-fetch the file.
+async function fetchFileBlob(fileObj) {
+  // ── Strategy 1: SDK path (avoids CORS entirely) ──────────────────
+  const storagePath = getStoragePath(fileObj);
+  if (storagePath) {
+    try {
+      const storage = getStorage();
+      const fileRef = ref(storage, storagePath);
+      const bytes   = await getBytes(fileRef);          // ArrayBuffer
+      return new Blob([bytes], { type: "application/pdf" });
+    } catch (sdkErr) {
+      // If SDK fails (e.g. path wrong), fall through to Strategy 2
+      console.warn("SDK getBytes failed, falling back to proxy fetch:", sdkErr?.code ?? sdkErr?.message);
+    }
+  }
+
+  // ── Strategy 2: Resolve URL, then route through backend proxy ────
+  // Direct signed URLs expire quickly; routing through BASE_URL/download
+  // lets the backend re-sign or serve the file reliably.
+  let resolvedUrl = null;
+
+  if (typeof fileObj === "string") {
+    if (fileObj.startsWith("http")) {
+      resolvedUrl = fileObj;                                                      // already a full URL
+    } else {
+      resolvedUrl = `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;  // plain backend path
+    }
+  } else if (typeof fileObj === "object") {
+    if (fileObj?.url) {
+      // url may be a full http URL or a plain backend path like /tmp/...
+      resolvedUrl = fileObj.url.startsWith("http")
+        ? fileObj.url
+        : `${BASE_URL}/download?path=${encodeURIComponent(fileObj.url)}`;
+    } else if (fileObj?.path) {
+      resolvedUrl = `${BASE_URL}/download?path=${encodeURIComponent(fileObj.path)}`;
+    } else if (fileObj?.name) {
+      resolvedUrl = `${BASE_URL}/download?path=${encodeURIComponent(fileObj.name)}`;
+    }
+  }
+
+  if (!resolvedUrl) {
+    // ── Last-resort fallback ──────────────────────────────────────
+    // If fileObj is some other shape (Firestore Timestamp, nested object, etc.)
+    // try converting it to a string and sending to the backend proxy.
+    const coerced = typeof fileObj === "object" && fileObj !== null
+      ? (fileObj?.downloadURL ?? fileObj?.fileUrl ?? fileObj?.uri ?? fileObj?.link ?? null)
+      : null;
+
+    if (coerced && typeof coerced === "string") {
+      resolvedUrl = coerced.startsWith("http")
+        ? `${BASE_URL}/download?path=${encodeURIComponent(coerced)}`
+        : `${BASE_URL}/download?path=${encodeURIComponent(coerced)}`;
+    }
+  }
+
+  if (!resolvedUrl) throw new Error("No download URL or storage path available.");
+
+  // KEY FIX: if it's an external signed URL (not already our backend),
+  // proxy it through the backend to avoid expiry & CORS issues.
+  const fetchUrl = resolvedUrl.startsWith("http") && !resolvedUrl.startsWith(BASE_URL)
+    ? `${BASE_URL}/download?path=${encodeURIComponent(resolvedUrl)}`
+    : resolvedUrl;
+
+  const res = await fetch(fetchUrl);
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+
+  // Guard: reject HTML (expired signed URL served the SPA's index.html)
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.startsWith("text/html")) {
+    throw new Error(
+      "Received an HTML page instead of a PDF. The stored URL has expired — " +
+      "please regenerate the documents."
+    );
+  }
+
+  const blob = await res.blob();
+  if (blob.size === 0) throw new Error("Received empty file.");
+
+  return blob;
+}
+
+export default function ProjectLibrary() {
+  const { projectId }           = useParams();
   const { currentUser, logout } = useAuth();
-  const navigate = useNavigate();
+  const navigate                = useNavigate();
 
-  const [run,         setRun]         = useState(null);
   const [projectName, setProjectName] = useState("");
+  const [projectIcon, setProjectIcon] = useState(null);
+  const [runs,        setRuns]        = useState([]);
   const [loading,     setLoading]     = useState(true);
+  const [zipping,     setZipping]     = useState({});
 
-  const [form, setForm] = useState({
-    projectName: "",
-    problem:     "",
-    summary:     "",
-    longDesc:    "",
-  });
-
-  const [uploadedFile, setUploadedFile] = useState(null);
-  const [fileError,    setFileError]    = useState("");
-  const [isDragging,   setIsDragging]   = useState(false);
-
-  const [status,       setStatus]       = useState("");
-  const [docs,         setDocs]         = useState(null);
-  const [generating,   setGenerating]   = useState(false);
-  const [currentRunId, setCurrentRunId] = useState(null);
-
+  // ── Fetch project + runs ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!runId || !projectId || !currentUser) return;
-    async function loadData() {
+    if (!projectId || !currentUser) return;
+    async function load() {
       try {
-        const runSnap = await getDoc(doc(db, "runs", runId));
-        if (!runSnap.exists()) { navigate(`/project/${projectId}/library`); return; }
-        const runData = { id: runSnap.id, ...runSnap.data() };
-        if (runData.userId !== currentUser.uid) { navigate("/dashboard"); return; }
-        setRun(runData);
-        setCurrentRunId(runData.id);
-
-        if (runData.inputs) {
-          setForm({
-            projectName: runData.inputs.projectName ?? "",
-            problem:     runData.inputs.problem     ?? "",
-            summary:     runData.inputs.summary     ?? "",
-            longDesc:    runData.inputs.longDesc     ?? "",
-          });
-        }
-
-        if (runData.documents) setDocs(runData.documents);
-
         const projSnap = await getDoc(doc(db, "projects", projectId));
-        if (projSnap.exists()) setProjectName(projSnap.data().name ?? "Project");
+        if (!projSnap.exists()) { navigate("/dashboard"); return; }
+        const projData = projSnap.data();
+        if (projData.ownerId !== currentUser.uid) { navigate("/dashboard"); return; }
+        setProjectName(projData.name ?? "Project");
+        const icon = resolveProjectIcon(projData.icon || projData.iconUrl);
+        if (icon) setProjectIcon(icon);
+
+        const q = query(
+          collection(db, "runs"),
+          where("projectId", "==", projectId),
+          where("userId",    "==", currentUser.uid)
+        );
+        const snap = await getDocs(q);
+        const list = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(r => r.documents)
+          .sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+        setRuns(list);
       } catch (err) {
         console.error(err);
       } finally {
         setLoading(false);
       }
     }
-    loadData();
-  }, [runId, projectId, currentUser, navigate]);
+    load();
+  }, [projectId, currentUser, navigate]);
 
   async function handleLogout() {
     try { await logout(); navigate("/signin"); } catch {}
   }
 
-  function handleChange(e) {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  // ── Mark as primary ───────────────────────────────────────────────────────
+  async function handlePrimary(runId, current) {
+    try {
+      await Promise.all(
+        runs.map(r =>
+          updateDoc(doc(db, "runs", r.id), { isPrimary: r.id === runId ? !current : false })
+        )
+      );
+      setRuns(prev =>
+        prev.map(r => ({ ...r, isPrimary: r.id === runId ? !current : false }))
+      );
+    } catch (err) { console.error(err); }
   }
 
-  function validateAndSetFile(file) {
-    if (!file) return;
-    if (file.size > MAX_FILE_BYTES) {
-      setFileError(`File too large. Max ${MAX_FILE_MB}MB. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB.`);
-      setUploadedFile(null);
-      const inp = document.getElementById("rv-file-input");
-      if (inp) inp.value = "";
-      return;
+  // ── Delete run + Firebase Storage files ──────────────────────────────────
+  // FIX: Storage cleanup is best-effort. A storage error logs a warning but
+  // does NOT block the Firestore delete — the run record is always removed.
+  async function handleDelete(runId) {
+    if (!window.confirm("Permanently delete this run? This cannot be undone.")) return;
+
+    const run = runs.find(r => r.id === runId);
+    if (!run) return;
+
+    // ── Step 1: Best-effort storage cleanup ─────────────────────────
+    const storage = getStorage();
+    if (run.documents) {
+      const storageDeletes = DOC_KEYS
+        .map(({ key }) => getStoragePath(run.documents[key]))
+        .filter(Boolean)
+        .map(p => deleteObject(ref(storage, p)));
+
+      if (storageDeletes.length > 0) {
+        const results = await Promise.allSettled(storageDeletes);
+        const failed  = results.filter(r =>
+          r.status === "rejected" &&
+          r.reason?.code !== "storage/object-not-found"  // already gone = fine
+        );
+        if (failed.length > 0) {
+          // Warn but do NOT return — Firestore delete still proceeds below
+          console.warn(
+            `${failed.length} storage file(s) could not be deleted (manual cleanup may be needed).`,
+            failed.map(f => f.reason?.code ?? f.reason?.message)
+          );
+        }
+      }
     }
-    setFileError("");
-    setUploadedFile(file);
+
+    // ── Step 2: Always delete the Firestore run document ────────────
+    try {
+      await deleteDoc(doc(db, "runs", runId));
+      setRuns(prev => prev.filter(r => r.id !== runId));
+    } catch (err) {
+      console.error("Firestore delete failed:", err);
+      alert("Could not delete the run record:\n" + err.message);
+    }
   }
 
-  function handleDrop(e) {
-    e.preventDefault();
-    setIsDragging(false);
-    validateAndSetFile(e.dataTransfer.files[0]);
+  // ── Download all docs as ZIP ──────────────────────────────────────────────
+  async function handleDownloadZip(run) {
+    if (!run.documents) return;
+    setZipping(prev => ({ ...prev, [run.id]: true }));
+
+    try {
+      const zip    = new JSZip();
+      const folder = zip.folder(
+        `${projectName}_${DOC_TYPE_META[run.docType]?.label ?? run.docType}_${formatDate(run)}`
+          .replace(/[^a-zA-Z0-9_\-]/g, "_")
+      );
+
+      const available = DOC_KEYS.filter(({ key }) => run.documents[key]);
+      if (available.length === 0) { alert("No documents found for this run."); return; }
+
+      const results = await Promise.allSettled(
+        available.map(async ({ key, filename }) => {
+          const blob = await fetchFileBlob(run.documents[key]);
+          folder.file(`${filename}.pdf`, blob);
+          console.log(`✓ ${filename}.pdf  (${(blob.size / 1024).toFixed(1)} KB)`);
+          return key;
+        })
+      );
+
+      const failed    = results
+        .map((r, i) => r.status === "rejected"
+          ? { key: available[i].key, reason: r.reason?.message ?? "Unknown error" }
+          : null)
+        .filter(Boolean);
+      const succeeded = results.filter(r => r.status === "fulfilled").length;
+
+      if (failed.length > 0) console.error("Failed documents:", failed);
+
+      if (succeeded === 0) {
+        alert(
+          `Could not download any files.\n\n` +
+          `Reason: ${failed[0]?.reason ?? "Unknown"}\n\n` +
+          `Check the browser console for full details.`
+        );
+        return;
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const zipName = `${projectName}_Documents_${formatDate(run)}.zip`
+        .replace(/[^a-zA-Z0-9_.\-]/g, "_");
+
+      const link    = document.createElement("a");
+      link.href     = URL.createObjectURL(zipBlob);
+      link.download = zipName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+
+      if (failed.length > 0) {
+        alert(
+          `ZIP created with ${succeeded} of ${available.length} files.\n\n` +
+          `Missing:\n` +
+          failed.map(f => `• ${f.key}: ${f.reason}`).join("\n")
+        );
+      }
+
+    } catch (err) {
+      console.error("ZIP generation failed:", err);
+      alert(`Failed to create ZIP:\n\n${err.message}`);
+    } finally {
+      setZipping(prev => ({ ...prev, [run.id]: false }));
+    }
   }
 
-  function formatDate(r) {
-    if (r?.createdAt?.toDate)
-      return r.createdAt.toDate().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-    if (typeof r?.createdAt === "number")
-      return new Date(r.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function formatDate(run) {
+    if (run.createdAt?.toDate) {
+      return run.createdAt.toDate().toLocaleDateString("en-US", {
+        month: "numeric", day: "numeric", year: "numeric",
+      });
+    }
+    if (typeof run.createdAt === "number") {
+      return new Date(run.createdAt).toLocaleDateString("en-US", {
+        month: "numeric", day: "numeric", year: "numeric",
+      });
+    }
     return "—";
   }
 
-  async function handleGenerate() {
-    if (!form.projectName.trim()) { setStatus("Please enter a project name."); return; }
-    if (!BASE_URL)                { setStatus("API configuration error."); return; }
-    if (fileError)                { setStatus("Please remove the invalid file before generating."); return; }
-
-    const config = DOC_TYPE_CONFIG[run?.docType];
-    if (!config) { setStatus("Unknown document type."); return; }
-
-    setGenerating(true);
-    setDocs(null);
-
-    let activeRunId = currentRunId;
-    try {
-      setStatus("Checking billing...");
-      const initiateRun   = httpsCallable(functions, "initiateRun");
-      const billingResult = await initiateRun({
-        projectId,
-        docType:       run.docType,
-        existingRunId: currentRunId ?? null,
-      });
-      activeRunId = billingResult.data.runId ?? activeRunId;
-      setCurrentRunId(activeRunId);
-
-      setStatus(
-        billingResult.data.status === "free"
-          ? `Free run used. ${billingResult.data.freeRunsRemaining} free run(s) remaining. Generating…`
-          : "$10 charged successfully. Generating…"
-      );
-    } catch (err) {
-      setStatus(`Billing error: ${err.message}`);
-      setGenerating(false);
-      return;
-    }
-
-    try {
-      const response = await fetch(`${BASE_URL}/api/predict`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(config.buildPayload(form)),
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-
-      const result = await response.json();
-      if (!result.data || !Array.isArray(result.data))
-        throw new Error("Invalid response format from server.");
-
-      const { statusMsg, docs: newDocs } = config.parseResponse(result.data);
-      setStatus(statusMsg);
-      setDocs(newDocs);
-
-      const runDate = new Date().toLocaleDateString("en-US", {
-        year: "numeric", month: "long", day: "numeric",
-      });
-      await updateDoc(doc(db, "projects", projectId), { lastGoalsScopeRun: runDate });
-
-      if (activeRunId) {
-        await updateDoc(doc(db, "runs", activeRunId), {
-          documents:   newDocs,
-          completedAt: Date.now(),
-          projectName: form.projectName,
-          inputs: {
-            projectName: form.projectName,
-            problem:     form.problem,
-            summary:     form.summary,
-            longDesc:    form.longDesc,
-          },
-        });
-      }
-    } catch (err) {
-      setStatus(`Error: ${err.message || "Connection failed. Please try again."}`);
-      console.error(err);
-    } finally {
-      setGenerating(false);
-    }
+  function countDocs(run) {
+    if (!run.documents) return 0;
+    return DOC_KEYS.filter(({ key }) => run.documents[key]).length;
   }
 
-  const meta       = run ? (DOC_TYPE_META[run.docType]   ?? { label: run.docType, icon: GoalsScopeIcon }) : null;
-  const config     = run ? (DOC_TYPE_CONFIG[run.docType] ?? null) : null;
-  const outputDocs = config?.outputDocs ?? [];
-
   return (
-    <div className="rv-root">
+    <div className="lib-root">
 
       {/* ── Sidebar ── */}
-      <aside className="rv-sidebar">
-        <Link to="/" className="rv-logo-wrap">
-          <img src={logo} alt="AI Hyperdox" className="rv-logo" />
+      <aside className="lib-sidebar">
+        <Link to="/dashboard" className="lib-logo-wrap">
+          <img src={logo} alt="AI Hyperdox" className="lib-logo" />
         </Link>
-
-        <Link to="/dashboard" className="rv-back-link">Back To Projects</Link>
-
+        <Link to="/dashboard" className="lib-back-link">Back To Projects</Link>
         {projectName && (
-          <div className="rv-project-section">
-            <span className="rv-project-label">{projectName}:</span>
-            <Link to={`/project/${projectId}/edit`}    className="rv-project-link">Project Details</Link>
-            <Link to={`/project/${projectId}/library`} className="rv-project-link rv-project-link--active">Project Library</Link>
-            <Link to={`/project/${projectId}/run`}     className="rv-project-link">New Document Run</Link>
+          <div className="lib-project-section">
+            <span className="lib-project-label">{projectName}:</span>
+            <Link to={`/project/${projectId}/edit`}    className="lib-project-link">Project Details</Link>
+            <Link to={`/project/${projectId}/library`} className="lib-project-link lib-project-link--active">Project Library</Link>
+            <Link to={`/project/${projectId}/run`}     className="lib-project-link">New Document Run</Link>
           </div>
         )}
-
-        <nav className="rv-nav">
+        <nav className="lib-nav">
           {NAV_LINKS.map(({ label, to }) => (
-            <Link key={to} to={to} className="rv-nav-link">{label}</Link>
+            <Link key={to} to={to} className="lib-nav-link">{label}</Link>
           ))}
         </nav>
-
-        <div className="rv-sidebar-footer">
-          <button className="rv-signout-btn" onClick={handleLogout}>Sign Out</button>
+        <div className="lib-sidebar-footer">
+          <button className="lib-signout-btn" onClick={handleLogout}>Sign Out</button>
         </div>
       </aside>
 
       {/* ── Main ── */}
-      <main className="rv-main">
-        {loading ? (
-          <div className="rv-loading">Loading run…</div>
-        ) : !run ? (
-          <div className="rv-loading">Run not found.</div>
-        ) : (
-          <>
-            <header className="rv-topbar">
-              <h1 className="rv-title">{projectName} {meta.label} Document Run</h1>
-            </header>
+      <main className="lib-main">
+        <header className="lib-topbar">
+          <div className="lib-topbar-inner">
+            <h1 className="lib-title">{projectName} Project Library</h1>
+            {projectIcon && (
+              <img src={projectIcon} alt="Project" className="lib-project-icon"
+                onError={e => { e.currentTarget.style.display = "none"; }} />
+            )}
+          </div>
+        </header>
 
-            <section className="rv-content">
-
-              <div className="rv-run-header">
-                <img src={meta.icon} alt={meta.label} className="rv-doc-icon" />
-                <p className="rv-last-run">
-                  Last {meta.label} Run For <strong>{projectName}</strong> Was {formatDate(run)}&nbsp;
-                  <Link to={`/project/${projectId}/library`} className="rv-view-run-link">View Library</Link>
-                </p>
-              </div>
-
-              <div className="rv-columns">
-
-                {/* ── LEFT: Inputs ── */}
-                <div className="rv-inputs">
-
-                  <div className="rv-field-group">
-                    <label className="rv-label">Project Name (short)</label>
-                    <input
-                      className="rv-input"
-                      name="projectName"
-                      placeholder="e.g. My Project"
-                      value={form.projectName}
-                      onChange={handleChange}
-                    />
-                  </div>
-
-                  <div className="rv-field-group">
-                    <label className="rv-label">What Problem is Being Solved?</label>
-                    <textarea
-                      className="rv-textarea"
-                      name="problem"
-                      value={form.problem}
-                      onChange={handleChange}
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="rv-field-group">
-                    <label className="rv-label">High-Level Summary (1–2 sentences)</label>
-                    <textarea
-                      className="rv-textarea"
-                      name="summary"
-                      value={form.summary}
-                      onChange={handleChange}
-                      rows={2}
-                    />
-                  </div>
-
-                  <div className="rv-field-group">
-                    <label className="rv-label">Longer Description / Requirements</label>
-                    <textarea
-                      className="rv-textarea"
-                      name="longDesc"
-                      value={form.longDesc}
-                      onChange={handleChange}
-                      rows={6}
-                    />
-                  </div>
-
-                  {/* File upload */}
-                  <div className="rv-field-group">
-                    <label className="rv-label">
-                      Upload Documents (PDF / DOCX / TXT)
-                      <span className="rv-file-hint"> — Max {MAX_FILE_MB}MB</span>
-                    </label>
-                    <div
-                      className={`rv-upload-box${isDragging ? " rv-upload-box--drag" : ""}${fileError ? " rv-upload-box--error" : ""}`}
-                      onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-                      onDragLeave={() => setIsDragging(false)}
-                      onDrop={handleDrop}
-                      onClick={() => document.getElementById("rv-file-input").click()}
-                    >
-                      <input
-                        id="rv-file-input"
-                        type="file"
-                        accept=".pdf,.docx,.txt"
-                        onChange={e => validateAndSetFile(e.target.files[0])}
-                        hidden
+        <section className="lib-content">
+          {loading ? (
+            <p className="lib-empty">Loading library...</p>
+          ) : runs.length === 0 ? (
+            <div className="lib-empty-state">
+              <p className="lib-empty">No document runs saved yet for <strong>{projectName}</strong>.</p>
+              <Link to={`/project/${projectId}/run`} className="lib-new-run-btn">
+                + New Document Run
+              </Link>
+            </div>
+          ) : (
+            <div className="lib-grid">
+              {runs.map(run => {
+                const meta      = DOC_TYPE_META[run.docType] ?? { label: run.docType, icon: GoalsScopeIcon };
+                const docCount  = countDocs(run);
+                const isZipping = zipping[run.id] ?? false;
+                return (
+                  <div key={run.id} className="lib-card">
+                    <img src={meta.icon} alt={meta.label} className="lib-card-icon" />
+                    <p className="lib-card-date">Created: {formatDate(run)}</p>
+                    <div className="lib-card-primary">
+                      <span>Mark As The Primary:</span>
+                      <button
+                        className={`lib-primary-box ${run.isPrimary ? "lib-primary-box--on" : ""}`}
+                        onClick={() => handlePrimary(run.id, run.isPrimary)}
+                        title={run.isPrimary ? "Unmark as primary" : "Mark as primary"}
                       />
-                      {uploadedFile ? (
-                        <p className="rv-upload-name">
-                          📎 {uploadedFile.name}
-                          <span className="rv-upload-size"> ({(uploadedFile.size / 1024 / 1024).toFixed(2)}MB)</span>
-                        </p>
+                    </div>
+                    <div className="lib-card-actions">
+                      <Link to={`/project/${projectId}/run-view/${run.id}`} className="lib-action-link">
+                        View Run
+                      </Link>
+                      {docCount > 0 ? (
+                        <button
+                          className="lib-action-link lib-action-link--download"
+                          onClick={() => handleDownloadZip(run)}
+                          disabled={isZipping}
+                          title={`Download all ${docCount} documents as ZIP`}
+                        >
+                          {isZipping ? "Zipping..." : "DOWNLOAD"}
+                        </button>
                       ) : (
-                        <>
-                          <div className="rv-upload-icon">↑</div>
-                          <p className="rv-upload-text">Drop File Here<br/>— or —<br/>Click to Upload</p>
-                        </>
+                        <span className="lib-action-link lib-action-link--disabled">DOWNLOAD</span>
                       )}
                     </div>
-
-                    {fileError && <p className="rv-file-error">❌ {fileError}</p>}
-
-                    {uploadedFile && !fileError && (
-                      <button
-                        type="button"
-                        className="rv-clear-file-btn"
-                        onClick={e => {
-                          e.stopPropagation();
-                          setUploadedFile(null);
-                          setFileError("");
-                          const inp = document.getElementById("rv-file-input");
-                          if (inp) inp.value = "";
-                        }}
-                      >
-                        ✕ Remove file
-                      </button>
-                    )}
+                    <button className="lib-delete-btn" onClick={() => handleDelete(run.id)}>
+                      Delete Permanently
+                    </button>
                   </div>
-
-                  <button
-                    className="rv-generate-btn"
-                    onClick={handleGenerate}
-                    disabled={generating || !!fileError}
-                  >
-                    {generating ? "Generating…" : "🚀 Generate Documents"}
-                  </button>
-                </div>
-
-                {/* ── RIGHT: Status + Downloads ── */}
-                <div className="rv-outputs">
-
-                  <div className="rv-field-group">
-                    <label className="rv-label">Status Message</label>
-                    <div className="rv-status-box">
-                      {status && <p className="rv-status-text">{status}</p>}
-                    </div>
-                  </div>
-
-                  {outputDocs.map(({ key, label }) => {
-                    const url = getDownloadUrl(docs?.[key]);
-                    return (
-                      <div key={key} className="rv-field-group">
-                        <label className="rv-label">📄 {label}</label>
-                        <div className="rv-output-box">
-                          {generating ? (
-                            <div className="rv-generating">
-                              <span className="rv-spinner" />
-                              <span className="rv-generating-text">Generating...</span>
-                            </div>
-                          ) : url ? (
-                            <a className="rv-download-link" href={url} target="_blank" rel="noreferrer">
-                              ⬇ Download
-                            </a>
-                          ) : (
-                            <span className="rv-output-empty-icon">📄</span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Run meta */}
-                  <div className="rv-meta-strip">
-                    <span className={`rv-status-badge rv-status-badge--${run.status}`}>
-                      {run.status === "free" ? "Free Run" : "Paid ($10)"}
-                    </span>
-                    <span className="rv-meta-id">ID: {run.id}</span>
-                  </div>
-
-                </div>
-              </div>
-            </section>
-          </>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );
