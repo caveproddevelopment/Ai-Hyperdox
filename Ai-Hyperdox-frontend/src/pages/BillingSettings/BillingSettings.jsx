@@ -13,7 +13,13 @@ import {
 } from "@stripe/react-stripe-js";
 import "./BillingSettings.css";
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+// ── Stripe init with debug ──────────────────────────────────────
+const stripeKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+console.log("🔑 Stripe key from env:", stripeKey);
+
+const stripePromise = loadStripe(
+  stripeKey ?? "pk_test_51TYQUQ1wU394IQ3jlr6UvbCyMR3X6dyUbLPbEZYrjA1ThOfin4Rlqjwqw5khUaf4MgFxGTMRSvvLnqEuUwxs3R4j001AWPyGqL"
+);
 
 function CardUpdateForm({ onSuccess, onCancel }) {
   const stripe = useStripe();
@@ -117,8 +123,8 @@ export default function BillingSettings() {
 
   const pricingRows = [
     { label: "Goals & Scope", price: "$10 per run" },
-    { label: "Project Plan", price: "$10 per run" },
-    { label: "Execution", price: "$10 per run" },
+    { label: "Project Plan",  price: "$10 per run" },
+    { label: "Execution",     price: "$10 per run" },
   ];
 
   return (
