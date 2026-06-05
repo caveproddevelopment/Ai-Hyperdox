@@ -15,9 +15,10 @@ import logo from '../../assets/AI Hyperdox Logo Square V2.png';
 import "./BillingSettings.css";
 
 // ── Stripe init ─────────────────────────────────────────────────
-const stripeKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+// TO
+const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = loadStripe(
-  stripeKey ?? "pk_test_51TYQUQ1wU394IQ3jlr6UvbCyMR3X6dyUbLPbEZYrjA1ThOfin4Rlqjwqw5khUaf4MgFxGTMRSvvLnqEuUwxs3R4j001AWPyGqL"
+  stripeKey ?? "pk_test_51TeukF1hNMtOA085LzCTEc8tvkxOfdwLxINSmMrpnztIkOTMDwYivdeuJoSmCwe6gSQiKFzATNzefeLiic7JXjvp0086JCwMFj"
 );
 
 // ── Add Card Form ───────────────────────────────────────────────
