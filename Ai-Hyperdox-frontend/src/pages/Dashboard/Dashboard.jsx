@@ -49,7 +49,7 @@ const NAV_LINKS = [
   { label: "About Us",     to: "/about"       },
 ];
 
-// ── Create New Project card ───────────────────────────────────────────────────
+// ── Create New Project card ──────────────────────────────────────
 function CreateCard({ onClick }) {
   return (
     <button className="dash-create-card" onClick={onClick} type="button">
@@ -59,7 +59,7 @@ function CreateCard({ onClick }) {
   );
 }
 
-// ── Project Card ──────────────────────────────────────────────────────────────
+// ── Project Card ─────────────────────────────────────────────────
 function ProjectCard({ project }) {
   const iconUrl = resolveIcon(project.icon);
 
@@ -88,7 +88,7 @@ function ProjectCard({ project }) {
   );
 }
 
-// ── Main Dashboard ────────────────────────────────────────────────────────────
+// ── Main Dashboard ───────────────────────────────────────────────
 export default function Dashboard() {
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
@@ -134,7 +134,8 @@ export default function Dashboard() {
 
       {/* ── Left Sidebar ── */}
       <aside className="dash-sidebar">
-        <Link to="/" className="dash-logo-wrap">
+        {/* ✅ Fixed: navigates to /dashboard instead of / */}
+        <Link to="/dashboard" className="dash-logo-wrap">
           <div className="dash-logo-icon">
             <img src={logo} alt="AI Hyperdox" />
           </div>

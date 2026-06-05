@@ -295,10 +295,10 @@ exports.saveInitialPasswordHistory = onCall(
 );
 
 // ════════════════════════════════════════════════════════════════
-//  BILLING — savePaymentMethod
+//  BILLING — addPaymentMethod (supports multiple cards per user)
 // ════════════════════════════════════════════════════════════════
 
-exports.savePaymentMethod = onCall(
+exports.addPaymentMethod = onCall(
   { cors: true, invoker: ["public"], secrets: [stripeSecret] },
   async (request) => {
     if (!request.auth) {
@@ -310,16 +310,18 @@ exports.savePaymentMethod = onCall(
       throw new HttpsError("invalid-argument", "paymentMethodId is required");
     }
 
-    const stripe = require("stripe")(stripeSecret.value());
-    const uid    = request.auth.uid;
-
-    const userRef  = db.collection("users").doc(uid);
+    const stripe  = require("stripe")(stripeSecret.value());
+    const uid     = request.auth.uid;
+    const userRef = db.collection("users").doc(uid);
     const userSnap = await userRef.get();
+
     if (!userSnap.exists) {
       throw new HttpsError("not-found", "User document not found.");
     }
+
     const userData = userSnap.data();
 
+    // ── Get or create Stripe customer ────────────────────────────
     let customerId = userData.stripeCustomerId || null;
     if (!customerId) {
       const customer = await stripe.customers.create({
@@ -330,23 +332,150 @@ exports.savePaymentMethod = onCall(
       customerId = customer.id;
     }
 
+    // ── Attach payment method to Stripe customer ─────────────────
     await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
-    await stripe.customers.update(customerId, {
-      invoice_settings: { default_payment_method: paymentMethodId },
-    });
 
+    // ── Retrieve card details ────────────────────────────────────
     const pm    = await stripe.paymentMethods.retrieve(paymentMethodId);
     const last4 = pm.card.last4;
     const brand = pm.card.brand;
 
+    // ── Check if this is the first card → set as default ─────────
+    const existingCards = userData.savedCards || [];
+    const isFirstCard   = existingCards.length === 0;
+
+    if (isFirstCard) {
+      await stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+    }
+
+    // ── Save to Firestore ────────────────────────────────────────
+    const newCard = { paymentMethodId, last4, brand };
+
     await userRef.update({
       stripeCustomerId:       customerId,
-      defaultPaymentMethodId: paymentMethodId,
-      cardLast4:              last4,
-      cardBrand:              brand,
+      savedCards:             FieldValue.arrayUnion(newCard),
+      // Only set default if it's the first card
+      ...(isFirstCard && { defaultPaymentMethodId: paymentMethodId, cardLast4: last4, cardBrand: brand }),
     });
 
-    return { success: true, last4, brand };
+    return { success: true, last4, brand, isDefault: isFirstCard };
+  }
+);
+
+// ════════════════════════════════════════════════════════════════
+//  BILLING — setDefaultCard
+// ════════════════════════════════════════════════════════════════
+
+exports.setDefaultCard = onCall(
+  { cors: true, invoker: ["public"], secrets: [stripeSecret] },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "You must be signed in.");
+    }
+
+    const { paymentMethodId } = request.data;
+    if (!paymentMethodId) {
+      throw new HttpsError("invalid-argument", "paymentMethodId is required");
+    }
+
+    const stripe   = require("stripe")(stripeSecret.value());
+    const uid      = request.auth.uid;
+    const userRef  = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      throw new HttpsError("not-found", "User document not found.");
+    }
+
+    const userData   = userSnap.data();
+    const customerId = userData.stripeCustomerId;
+
+    if (!customerId) {
+      throw new HttpsError("failed-precondition", "No Stripe customer found.");
+    }
+
+    // ── Update default in Stripe ─────────────────────────────────
+    await stripe.customers.update(customerId, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+
+    // ── Find card details from savedCards ────────────────────────
+    const savedCards = userData.savedCards || [];
+    const card       = savedCards.find(c => c.paymentMethodId === paymentMethodId);
+
+    // ── Update Firestore ─────────────────────────────────────────
+    await userRef.update({
+      defaultPaymentMethodId: paymentMethodId,
+      cardLast4:  card?.last4 ?? "",
+      cardBrand:  card?.brand ?? "",
+    });
+
+    return { success: true };
+  }
+);
+
+// ════════════════════════════════════════════════════════════════
+//  BILLING — removePaymentMethod
+// ════════════════════════════════════════════════════════════════
+
+exports.removePaymentMethod = onCall(
+  { cors: true, invoker: ["public"], secrets: [stripeSecret] },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "You must be signed in.");
+    }
+
+    const { paymentMethodId } = request.data;
+    if (!paymentMethodId) {
+      throw new HttpsError("invalid-argument", "paymentMethodId is required");
+    }
+
+    const stripe   = require("stripe")(stripeSecret.value());
+    const uid      = request.auth.uid;
+    const userRef  = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      throw new HttpsError("not-found", "User document not found.");
+    }
+
+    const userData      = userSnap.data();
+    const savedCards    = userData.savedCards || [];
+    const defaultCardId = userData.defaultPaymentMethodId;
+
+    // ── Detach from Stripe ───────────────────────────────────────
+    await stripe.paymentMethods.detach(paymentMethodId);
+
+    // ── Remove from savedCards array ─────────────────────────────
+    const updatedCards  = savedCards.filter(c => c.paymentMethodId !== paymentMethodId);
+
+    const updateData = {
+      savedCards: updatedCards,
+    };
+
+    // ── If removed card was default, set next card as default ────
+    if (paymentMethodId === defaultCardId) {
+      if (updatedCards.length > 0) {
+        const newDefault = updatedCards[0];
+        await stripe.customers.update(userData.stripeCustomerId, {
+          invoice_settings: { default_payment_method: newDefault.paymentMethodId },
+        });
+        updateData.defaultPaymentMethodId = newDefault.paymentMethodId;
+        updateData.cardLast4              = newDefault.last4;
+        updateData.cardBrand              = newDefault.brand;
+      } else {
+        // No cards left
+        updateData.defaultPaymentMethodId = null;
+        updateData.cardLast4              = null;
+        updateData.cardBrand              = null;
+      }
+    }
+
+    await userRef.update(updateData);
+
+    return { success: true };
   }
 );
 
@@ -457,4 +586,4 @@ exports.initiateRun = onCall(
   }
 );
 
-// v11
+// v13

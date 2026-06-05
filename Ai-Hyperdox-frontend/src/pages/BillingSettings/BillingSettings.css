@@ -38,7 +38,7 @@
   padding: 64px 20px 80px;
 }
 
-/* Subtle grid overlay — matches the techy Hyperdox aesthetic */
+/* Subtle grid overlay */
 .bs-bg-grid {
   position: fixed;
   inset: 0;
@@ -48,6 +48,28 @@
   background-size: 48px 48px;
   pointer-events: none;
   z-index: 0;
+}
+
+/* ── Logo ─────────────────────────────────────────────────────── */
+.bs-logo {
+  position: fixed;
+  top: 18px;
+  left: 22px;
+  z-index: 100;
+  display: block;
+  text-decoration: none;
+  transition: opacity 0.18s ease;
+}
+
+.bs-logo:hover {
+  opacity: 0.8;
+}
+
+.bs-logo img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  display: block;
 }
 
 /* ── Container ────────────────────────────────────────────────── */
@@ -110,6 +132,12 @@
   color: var(--bs-green);
 }
 
+.bs-banner--error {
+  background: rgba(255, 107, 107, 0.08);
+  border-color: rgba(255, 107, 107, 0.3);
+  color: var(--bs-red);
+}
+
 /* ── Info Cards ───────────────────────────────────────────────── */
 .bs-card {
   background: var(--bs-surface);
@@ -136,6 +164,87 @@
   animation: bs-slide-down 0.22s ease;
 }
 
+/* ── Saved Card specific ──────────────────────────────────────── */
+.bs-saved-card {
+  transition: border-color var(--bs-transition), box-shadow var(--bs-transition);
+}
+
+.bs-saved-card--default {
+  border-color: var(--bs-cyan-dim);
+  box-shadow: 0 0 16px var(--bs-cyan-glow);
+}
+
+.bs-default-badge {
+  display: inline-block;
+  margin-left: 8px;
+  font-family: var(--bs-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 212, 232, 0.4);
+  background: rgba(0, 212, 232, 0.08);
+  color: var(--bs-cyan);
+  vertical-align: middle;
+}
+
+/* ── Card Actions ─────────────────────────────────────────────── */
+.bs-card__actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.bs-btn--sm {
+  font-size: 11px;
+  padding: 6px 12px;
+  letter-spacing: 0.05em;
+}
+
+.bs-btn--danger {
+  background: transparent;
+  color: var(--bs-red);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+.bs-btn--danger:hover:not(:disabled) {
+  background: rgba(255, 107, 107, 0.08);
+  border-color: var(--bs-red);
+}
+
+.bs-btn--danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Section (Payment Methods + Pricing) ─────────────────────── */
+.bs-section {
+  background: var(--bs-surface);
+  border: 1px solid var(--bs-border);
+  border-radius: var(--bs-radius-lg);
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bs-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bs-section__title {
+  font-family: var(--bs-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--bs-muted);
+  margin: 0;
+}
+
+/* ── Card Icon ────────────────────────────────────────────────── */
 .bs-card__icon {
   flex-shrink: 0;
   width: 42px;
@@ -147,6 +256,7 @@
   align-items: center;
   justify-content: center;
   color: var(--bs-cyan);
+  font-size: 18px;
 }
 
 .bs-card__body {
@@ -161,6 +271,10 @@
   text-transform: uppercase;
   color: var(--bs-muted);
   margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .bs-card__value {
@@ -330,28 +444,11 @@
   margin-top: 14px;
 }
 
-/* ── Pricing Section ──────────────────────────────────────────── */
-.bs-section {
-  background: var(--bs-surface);
-  border: 1px solid var(--bs-border);
-  border-radius: var(--bs-radius-lg);
-  padding: 22px 24px;
-}
-
-.bs-section__title {
-  font-family: var(--bs-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--bs-muted);
-  margin: 0 0 16px;
-}
-
+/* ── Pricing ──────────────────────────────────────────────────── */
 .bs-pricing-table {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-bottom: 16px;
 }
 
 .bs-pricing-row {
@@ -396,4 +493,37 @@
   margin: 0;
   border-top: 1px solid var(--bs-border);
   padding-top: 14px;
+}
+
+/* ── Back link ────────────────────────────────────────────────── */
+.bs-back-link {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--bs-font-mono);
+  font-size: 12px;
+  color: var(--bs-muted);
+  letter-spacing: 0.08em;
+  padding: 8px 0;
+  text-align: left;
+  transition: color var(--bs-transition);
+}
+
+.bs-back-link:hover {
+  color: var(--bs-cyan);
+}
+
+/* ── Animations ───────────────────────────────────────────────── */
+@keyframes bs-fade-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+@keyframes bs-slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+@keyframes bs-spin {
+  to { transform: rotate(360deg); }
 }
