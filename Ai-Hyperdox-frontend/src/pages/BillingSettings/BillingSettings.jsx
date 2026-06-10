@@ -15,7 +15,6 @@ import logo from '../../assets/AI Hyperdox Logo Square V2.png';
 import "./BillingSettings.css";
 
 // ── Stripe init ─────────────────────────────────────────────────
-// TO
 const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = loadStripe(
   stripeKey ?? "pk_test_51TeukF1hNMtOA085LzCTEc8tvkxOfdwLxINSmMrpnztIkOTMDwYivdeuJoSmCwe6gSQiKFzATNzefeLiic7JXjvp0086JCwMFj"
@@ -142,6 +141,7 @@ export default function BillingSettings() {
   };
 
   const freeRuns      = userData?.freeRunsRemaining ?? 0;
+  const totalRuns     = userData?.totalRunsUsed ?? 0;
   const savedCards    = userData?.savedCards ?? [];
   const defaultCardId = userData?.defaultPaymentMethodId ?? null;
 
@@ -176,24 +176,48 @@ export default function BillingSettings() {
           </div>
         )}
 
-        {/* Free Runs */}
-        <div className="bs-card">
-          <div className="bs-card__icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
+        {/* ── Stats Row ── */}
+        <div className="bs-stats-row">
+
+          {/* Free Runs */}
+          <div className="bs-card">
+            <div className="bs-card__icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+            </div>
+            <div className="bs-card__body">
+              <p className="bs-card__label">Free Runs Remaining</p>
+              <p className="bs-card__value">
+                <span className="bs-highlight">{freeRuns}</span>
+                <span className="bs-card__sub"> runs left</span>
+              </p>
+            </div>
+            <div className={`bs-runs-badge ${freeRuns === 0 ? "bs-runs-badge--empty" : ""}`}>
+              {freeRuns > 0 ? "Active" : "Exhausted"}
+            </div>
           </div>
-          <div className="bs-card__body">
-            <p className="bs-card__label">Free Runs Remaining</p>
-            <p className="bs-card__value">
-              <span className="bs-highlight">{freeRuns}</span>
-              <span className="bs-card__sub"> runs left</span>
-            </p>
+
+          {/* Total Runs Used */}
+          <div className="bs-card">
+            <div className="bs-card__icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+            </div>
+            <div className="bs-card__body">
+              <p className="bs-card__label">Total Runs Used</p>
+              <p className="bs-card__value">
+                <span className="bs-highlight">{totalRuns}</span>
+                <span className="bs-card__sub"> runs total</span>
+              </p>
+            </div>
+            <div className="bs-runs-badge">
+              Lifetime
+            </div>
           </div>
-          <div className={`bs-runs-badge ${freeRuns === 0 ? "bs-runs-badge--empty" : ""}`}>
-            {freeRuns > 0 ? "Active" : "Exhausted"}
-          </div>
+
         </div>
 
         {/* Payment Methods Section */}

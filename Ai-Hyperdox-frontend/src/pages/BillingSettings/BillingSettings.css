@@ -512,7 +512,18 @@
 .bs-back-link:hover {
   color: var(--bs-cyan);
 }
+.bs-stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
 
+@media (max-width: 520px) {
+  .bs-stats-row {
+    grid-template-columns: 1fr;
+  }
+}
 /* ── Animations ───────────────────────────────────────────────── */
 @keyframes bs-fade-in {
   from { opacity: 0; transform: translateY(-6px); }
