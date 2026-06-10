@@ -63,7 +63,7 @@ export default function Home() {
         </button>
 
         <p className="cta-sub">
-          Your First 2 Full Document<br />
+          Your First 3 Full Document<br />
           Runs Are Free
         </p>
       </div>
