@@ -81,7 +81,18 @@ def upload_to_storage(local_path: str, project_name: str, doc_title: str):
 
 # ── App setup ───────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app)
+
+# ── CORS fix: explicitly allow all frontend origins ─────────────
+CORS(app, resources={r"/api/*": {
+    "origins": [
+        "https://aihyperdox.com",
+        "https://ai-hyperdox.vercel.app",
+        "http://localhost:5173",
+    ],
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"],
+    "supports_credentials": False,
+}})
 
 
 # ── Health server (port 8081) ───────────────────────────────────
@@ -295,8 +306,11 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 
 
 # ── Flask REST API ───────────────────────────────────────────────
-@app.route("/api/predict", methods=["POST"])
+@app.route("/api/predict", methods=["POST", "OPTIONS"])
 def api_predict():
+    if request.method == "OPTIONS":
+        return "", 204
+
     try:
         data       = request.json or {}
         input_data = data.get("data", [])
