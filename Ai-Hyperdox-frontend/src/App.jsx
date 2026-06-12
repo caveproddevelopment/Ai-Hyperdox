@@ -19,6 +19,7 @@ import NewDocumentRun from "./pages/NewDocumentRun/NewDocumentRun";
 import BillingSettings from "./pages/BillingSettings/BillingSettings";
 import ProjectLibrary from "./pages/ProjectLibrary/ProjectLibrary";
 import RunView from './pages/RunView/RunView';
+import ProjectPlanning from './pages/ProjectPlanning/Projectplanning';
 
 export default function App() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/billing"              element={<BillingSettings />} />
         <Route path="/project/:projectId/library" element={<ProjectLibrary />} />
         <Route path="/project/:projectId/run-view/:runId" element={<RunView />} />
+        <Route path="/project/:projectId/run/project-plan" element={<ProjectPlanning />} />
       </Routes>
       </AuthProvider>
     </BrowserRouter>
