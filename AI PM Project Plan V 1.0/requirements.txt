@@ -4,3 +4,6 @@ reportlab
 PyPDF2
 python-docx
 openpyxl
+flask
+flask-cors
+firebase-admin
