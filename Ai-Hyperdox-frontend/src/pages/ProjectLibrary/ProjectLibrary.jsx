@@ -39,6 +39,11 @@ const DOC_KEYS = [
   { key: "resources",     filename: "Resource_Teams_Document"      },
   { key: "executionPlan", filename: "Execution_Plan_Document"      },
   { key: "projectPlan",   filename: "Project_Plan_Document"        },
+  // Project Plan (AIPM) documents — keys match app.py's pdfs dict
+  { key: "Work Breakdown Structure (WBS)", filename: "WBS_Document"               },
+  { key: "Project Timeline",               filename: "Project_Timeline_Document"   },
+  { key: "Resource Allocation Plan",       filename: "Resource_Allocation_Document"},
+  { key: "Cost Management Plan",           filename: "Cost_Management_Document"    },
 ];
 
 const iconModules = import.meta.glob(
