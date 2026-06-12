@@ -2,9 +2,10 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { db, functions } from "../../firebase";
+import { db, functions, storage } from "../../firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
+import { ref, getDownloadURL } from "firebase/storage";
 import logo from '../../assets/AI Hyperdox Logo Square V2.png';
 import GoalsScopeIcon from '../../assets/Documenticon/GoalsscopeIcon.png';
 import "./GoalsAndScope.css";
@@ -68,6 +69,7 @@ export default function GoalsAndScope() {
   const [docs,         setDocs]         = useState(null);
   const [loading,      setLoading]      = useState(false);
   const [currentRunId, setCurrentRunId] = useState(null);
+  const [downloadingKey, setDownloadingKey] = useState(null); // tracks which doc is being prepared for download
 
   useEffect(() => {
     if (!projectId) return;
@@ -199,12 +201,56 @@ export default function GoalsAndScope() {
     }
   }
 
-  function getDownloadUrl(fileObj) {
-    if (!fileObj) return null;
-    if (typeof fileObj === "string" && fileObj.startsWith("http")) return fileObj;
-    if (typeof fileObj === "string") return `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
-    const filePath = fileObj?.path ?? fileObj?.url ?? fileObj?.name;
-    return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
+  /**
+   * Resolves a downloadable URL for a generated document and triggers the download.
+   *
+   * Document objects from the backend look like:
+   *   { url: "gs://bucket/generated-docs/.../file.pdf", path: "generated-docs/.../file.pdf" }
+   *
+   * - If `path` is present → it's stored in Firebase Storage. We use the Firebase
+   *   Storage SDK (getDownloadURL) to get a fresh, authenticated download URL.
+   *   This works regardless of backend redeploys/restarts, since the file lives
+   *   permanently in Firebase Storage and is keyed by `path`, which is saved in
+   *   Firestore (via the `runs` and `projects` documents) — so it's accessible
+   *   at any point in the future.
+   * - If `url` starts with "http" → it's already a usable direct URL.
+   * - Otherwise (legacy /tmp fallback, no Firebase configured at generation time)
+   *   → fall back to the backend's /download?path= endpoint. Note: this only
+   *   works while the backend instance that generated it is still running.
+   */
+  async function downloadDocument(docKey, fileObj, label) {
+    if (!fileObj) return;
+
+    setDownloadingKey(docKey);
+    try {
+      let downloadUrl = null;
+
+      const storagePath = fileObj?.path;
+      const urlField    = fileObj?.url;
+
+      if (storagePath) {
+        // Firebase Storage path — get a fresh download URL via the SDK.
+        const fileRef = ref(storage, storagePath);
+        downloadUrl = await getDownloadURL(fileRef);
+      } else if (typeof urlField === "string" && urlField.startsWith("http")) {
+        downloadUrl = urlField;
+      } else if (typeof fileObj === "string" && fileObj.startsWith("http")) {
+        downloadUrl = fileObj;
+      } else {
+        // Legacy /tmp fallback via backend
+        const fallbackPath = typeof fileObj === "string" ? fileObj : (urlField ?? fileObj?.name);
+        if (!fallbackPath) throw new Error("No valid file reference found.");
+        downloadUrl = `${BASE_URL}/download?path=${encodeURIComponent(fallbackPath)}`;
+      }
+
+      // Trigger download in a new tab
+      window.open(downloadUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error(`Failed to download ${label}:`, err);
+      setStatus(`Failed to download ${label}: ${err.message || "Unknown error"}`);
+    } finally {
+      setDownloadingKey(null);
+    }
   }
 
   return (
@@ -374,9 +420,14 @@ export default function GoalsAndScope() {
                         <span className="gs-generating-text">Generating...</span>
                       </div>
                     ) : docs?.[docKey] ? (
-                      <a className="gs-download-link" href={getDownloadUrl(docs[docKey])} target="_blank" rel="noreferrer">
-                        ⬇ Download
-                      </a>
+                      <button
+                        type="button"
+                        className="gs-download-link"
+                        onClick={() => downloadDocument(docKey, docs[docKey], label)}
+                        disabled={downloadingKey === docKey}
+                      >
+                        {downloadingKey === docKey ? "Preparing..." : "⬇ Download"}
+                      </button>
                     ) : (
                       <span className="gs-output-empty-icon">📄</span>
                     )}
