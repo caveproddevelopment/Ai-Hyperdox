@@ -9,7 +9,13 @@ from io import BytesIO
 import docx
 import gradio as gr
 import os
+import threading
+import json
+import uuid
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
+from flask import Flask, request, jsonify, send_file, abort
+from flask_cors import CORS
 
 try:
     import openpyxl
@@ -18,13 +24,91 @@ except ImportError:
     XLSX_AVAILABLE = False
 
 
-# ── File extraction ────────────────────────────────────────────────────────────
+# ── Firebase Admin ──────────────────────────────────────────────
+import firebase_admin
+from firebase_admin import credentials, storage as fb_storage
 
+_firebase_ready = False
+
+def init_firebase():
+    global _firebase_ready
+    if _firebase_ready:
+        return True
+    try:
+        sa_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")   # full JSON string
+        bucket  = os.getenv("FIREBASE_STORAGE_BUCKET")    # e.g. your-project.appspot.com
+        if not sa_json or not bucket:
+            print("⚠ Firebase env vars not set — files will use /tmp fallback.")
+            return False
+        cred = credentials.Certificate(json.loads(sa_json))
+        firebase_admin.initialize_app(cred, {"storageBucket": bucket})
+        _firebase_ready = True
+        print("✅ Firebase Admin initialised.")
+        return True
+    except Exception as e:
+        print(f"⚠ Firebase init failed: {e}")
+        return False
+
+
+def upload_to_storage(local_path: str, project_name: str, doc_title: str):
+    """
+    Upload a local PDF to Firebase Storage.
+    Returns (url_or_path, storage_path).
+    Falls back to (local_path, None) if Firebase is not configured.
+    """
+    if not init_firebase():
+        return local_path, None
+
+    try:
+        filename    = os.path.basename(local_path)
+        destination = f"generated-docs/{project_name.replace(' ', '_')}/{uuid.uuid4().hex}_{filename}"
+
+        bucket_obj = fb_storage.bucket()
+        blob       = bucket_obj.blob(destination)
+        blob.upload_from_filename(local_path, content_type="application/pdf")
+
+        # Uniform bucket-level access — no public ACLs/signed URLs.
+        # Frontend downloads via Firebase SDK getBytes() using the storage path.
+        url = f"gs://{bucket_obj.name}/{destination}"
+
+        print(f"✅ Uploaded {filename} → {url}")
+        return url, destination
+
+    except Exception as e:
+        print(f"⚠ Upload failed for {local_path}: {e}")
+        return local_path, None
+
+
+# ── App setup ───────────────────────────────────────────────────
+app = Flask(__name__)
+CORS(app)
+
+
+# ── Health server (port 8081) ───────────────────────────────────
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def log_message(self, format, *args):
+        pass
+
+threading.Thread(target=lambda: HTTPServer(("0.0.0.0", 8081), HealthHandler).serve_forever(), daemon=True).start()
+
+
+# ── File extraction ────────────────────────────────────────────
 def extract_text_from_file(uploaded_file):
     name = getattr(uploaded_file, "name", "uploaded_file").lower()
     try:
-        with open(uploaded_file, "rb") as f:
-            data = f.read()
+        if hasattr(uploaded_file, "data"):
+            data = uploaded_file.data
+        elif isinstance(uploaded_file, bytes):
+            data = uploaded_file
+        elif isinstance(uploaded_file, str):
+            with open(uploaded_file, "rb") as f:
+                data = f.read()
+        else:
+            data = b""
     except Exception:
         data = b""
 
@@ -62,8 +146,7 @@ def extract_text_from_file(uploaded_file):
     return text.strip()
 
 
-# ── PDF builder ────────────────────────────────────────────────────────────────
-
+# ── PDF builder ───────────────────────────────────────────────
 def create_pdf(project_name, doc_title, content):
     styles   = getSampleStyleSheet()
     safe_pn  = (project_name or "Project").replace(" ", "_")
@@ -95,15 +178,11 @@ def create_pdf(project_name, doc_title, content):
     return filepath
 
 
-# ── GPT call (lazy client — no module-level init) ──────────────────────────────
-
+# ── GPT call (lazy client) ──────────────────────────────────────
 def call_gpt(system_msg, user_prompt):
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError(
-            "OPENAI_API_KEY is not set. "
-            "Go to Space Settings → Repository Secrets and add OPENAI_API_KEY."
-        )
+        raise ValueError("OPENAI_API_KEY is not set.")
     _client = OpenAI(api_key=api_key)
     completion = _client.chat.completions.create(
         model="gpt-4o",
@@ -115,14 +194,11 @@ def call_gpt(system_msg, user_prompt):
     return completion.choices[0].message.content
 
 
-# ── Main generation function ───────────────────────────────────────────────────
-
+# ── Core generation ──────────────────────────────────────────────
 def generate_project_plan(project_name, milestones, timeline, resources, budget_file, methodology):
     if not any([project_name, milestones, timeline, resources]):
-        return (
-            "⚠ Please provide at least a Project Name and some planning details.",
-            None, None, None, None,
-        )
+        return ("⚠ Please provide at least a Project Name and some planning details.",
+                None, None, None, None)
 
     budget_text = ""
     if budget_file is not None:
@@ -196,14 +272,16 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
     errors = []
     for title, prompt in prompts.items():
         try:
-            content   = call_gpt(system_msg, prompt)
-            pdfs[title] = create_pdf(project_name, title, content)
+            content    = call_gpt(system_msg, prompt)
+            local_path = create_pdf(project_name, title, content)
+            url, storage_path = upload_to_storage(local_path, project_name, title)
+            pdfs[title] = {"url": url, "path": storage_path}
         except Exception as e:
             errors.append(f"{title}: {e}")
             pdfs[title] = None
 
     if errors:
-        status = f"⚠ Errors occurred:\n" + "\n".join(errors)
+        status = "⚠ Errors occurred:\n" + "\n".join(errors)
     else:
         status = f"✅ All four Project Plan documents generated for '{project_name}'!"
 
@@ -216,97 +294,73 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
     )
 
 
-# ── Gradio UI ──────────────────────────────────────────────────────────────────
+# ── Flask REST API ───────────────────────────────────────────────
+@app.route("/api/predict", methods=["POST"])
+def api_predict():
+    try:
+        data       = request.json or {}
+        input_data = data.get("data", [])
 
+        if len(input_data) < 4:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        project_name = input_data[0] or ""
+        milestones    = input_data[1] or ""
+        timeline      = input_data[2] or ""
+        resources     = input_data[3] or ""
+        budget_file   = input_data[4] if len(input_data) > 4 else None
+        methodology   = input_data[5] if len(input_data) > 5 else "Agile"
+
+        result = generate_project_plan(project_name, milestones, timeline, resources, budget_file, methodology)
+        return jsonify({"data": result}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/download", methods=["GET"])
+def download_file():
+    path = request.args.get("path")
+    if not path:
+        abort(400, description="Missing 'path' query parameter.")
+    if not path.startswith("/tmp/"):
+        abort(403, description="Access denied.")
+    if not os.path.exists(path):
+        abort(404, description=f"File not found: {path}. The server may have restarted — please regenerate the documents.")
+    return send_file(
+        path,
+        as_attachment=True,
+        download_name=os.path.basename(path),
+        mimetype="application/pdf"
+    )
+
+
+@app.route("/api/health", methods=["GET"])
+def health_check():
+    return jsonify({"status": "ok", "firebase": _firebase_ready}), 200
+
+
+# ── Gradio UI (optional local testing) ────────────────────────────
 with gr.Blocks(
     title="AIPM – Project Plan Documents",
     theme=gr.themes.Soft(primary_hue="blue", neutral_hue="gray"),
-    css="""
-        .header { text-align:center; padding:14px 0 6px; }
-        .header h1 { font-size:1.75rem; font-weight:700; color:#1a3c6e; }
-        .header p  { color:#555; font-size:.93rem; margin-top:3px; }
-        footer { visibility:hidden; }
-    """,
 ) as demo:
-
-    gr.HTML("""
-        <div class="header">
-            <h1>🗂️ AIPM – Project Plan Documents</h1>
-            <p>Monte Turner's <em>Be an AI PM</em> series &nbsp;·&nbsp;
-               WBS &nbsp;·&nbsp; Timeline &nbsp;·&nbsp;
-               Resource Allocation &nbsp;·&nbsp; Cost Management Plan</p>
-        </div>
-    """)
-
+    gr.HTML("<div style='text-align:center'><h1>🗂️ AIPM – Project Plan Documents</h1></div>")
     with gr.Row():
-
-        # ── Left column: inputs ────────────────────────────────────────────
         with gr.Column(scale=1):
-
-            project_name = gr.Textbox(
-                label="Project Name",
-                placeholder="e.g. Uggalot Episode 1 Production",
-                lines=1,
-            )
-
-            methodology = gr.Radio(
-                choices=["Agile", "Waterfall"],
-                value="Agile",
-                label="📐 Methodology",
-                info="Agile = sprint/epic decomposition.  Waterfall = phase-gate planning.",
-            )
-
-            milestones = gr.Textbox(
-                label="Milestones",
-                placeholder=(
-                    "e.g.\n"
-                    "M1 – Script Finalized | 2026-06-20\n"
-                    "M2 – Animation Draft Complete | 2026-07-15\n"
-                    "M3 – Episode 1 Launch | 2026-08-01"
-                ),
-                lines=6,
-            )
-
-            timeline = gr.Textbox(
-                label="High-Level Timeline",
-                placeholder=(
-                    "e.g.\n"
-                    "Phase 1: Pre-Production  (Jun 1 – Jun 30)\n"
-                    "Phase 2: Production      (Jul 1 – Jul 31)\n"
-                    "Phase 3: Post-Production (Aug 1 – Aug 15)\n"
-                    "Phase 4: Launch          (Aug 16+)"
-                ),
-                lines=5,
-            )
-
-            resources = gr.Textbox(
-                label="Resource List",
-                placeholder=(
-                    "e.g.\n"
-                    "Anshika – Illustrator (full-time)\n"
-                    "Helna   – Illustrator (full-time)\n"
-                    "Deepanshu – Animator Intern\n"
-                    "Ratim   – Animator Intern\n"
-                    "Aatish  – App Developer Intern"
-                ),
-                lines=6,
-            )
-
-            budget_file = gr.File(
-                label="📊 Budget Spreadsheet — optional (XLSX / CSV / PDF / TXT)",
-                file_count="single",
-            )
-
-            submit_btn = gr.Button("🚀 Generate Project Plan Documents", variant="primary")
-
-        # ── Right column: outputs ──────────────────────────────────────────
+            project_name = gr.Textbox(label="Project Name", lines=1)
+            methodology  = gr.Radio(choices=["Agile", "Waterfall"], value="Agile", label="Methodology")
+            milestones   = gr.Textbox(label="Milestones", lines=6)
+            timeline     = gr.Textbox(label="High-Level Timeline", lines=5)
+            resources    = gr.Textbox(label="Resource List", lines=6)
+            budget_file  = gr.File(label="Budget Spreadsheet", file_count="single")
+            submit_btn   = gr.Button("🚀 Generate Project Plan Documents", variant="primary")
         with gr.Column(scale=1):
-            status  = gr.Textbox(label="Status", interactive=False, lines=4)
-            pdf_wbs = gr.File(label="📥 Work Breakdown Structure (WBS)")
-            pdf_tl  = gr.File(label="📥 Project Timeline")
-            pdf_ra  = gr.File(label="📥 Resource Allocation Plan")
-            pdf_cm  = gr.File(label="📥 Cost Management Plan")
-
+            status  = gr.Textbox(label="Status", lines=4)
+            pdf_wbs = gr.JSON(label="WBS")
+            pdf_tl  = gr.JSON(label="Project Timeline")
+            pdf_ra  = gr.JSON(label="Resource Allocation Plan")
+            pdf_cm  = gr.JSON(label="Cost Management Plan")
     submit_btn.click(
         fn=generate_project_plan,
         inputs=[project_name, milestones, timeline, resources, budget_file, methodology],
@@ -314,10 +368,17 @@ with gr.Blocks(
         show_progress=True,
     )
 
-    gr.HTML(
-        "<p style='text-align:center;color:#bbb;font-size:11px;margin-top:16px;'>"
-        "© 2026 Caveman Productions Media &nbsp;·&nbsp; AIPM Project Plan Agent &nbsp;·&nbsp; Agent 2 of 5</p>"
-    )
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 7860)))
+    def run_gradio():
+        demo.launch(
+            server_name="127.0.0.1",
+            server_port=7860,
+            share=False,
+            quiet=True,
+        )
+
+    threading.Thread(target=run_gradio, daemon=True).start()
+
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=False)
