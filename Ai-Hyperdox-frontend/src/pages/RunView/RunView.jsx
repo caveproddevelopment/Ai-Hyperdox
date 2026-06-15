@@ -62,27 +62,41 @@ const DOC_TYPE_CONFIG = {
   },
   "project-plan": {
     outputDocs: [
-      { key: "projectPlan", label: "Project Plan Document (Download)" },
+      { key: "wbs",      label: "Work Breakdown Structure (Download)" },
+      { key: "timeline", label: "Project Timeline (Download)"         },
+      { key: "resource", label: "Resource Allocation Plan (Download)" },
+      { key: "cost",     label: "Cost Management Plan (Download)"     },
     ],
     buildPayload: (form) => ({
-      data: [form.projectName, form.problem, form.summary, form.longDesc, []],
+      data: [
+        form.projectName,
+        form.methodology ?? "",
+        form.milestones  ?? "",
+        form.resources   ?? "",
+        form.timeline    ?? "",
+      ],
       api_name: "/generate_project_plan",
     }),
     parseResponse: (data) => {
-      const [statusMsg, projectPlan] = data;
-      return { statusMsg, docs: { projectPlan } };
+      const [statusMsg, wbs, timeline, resource, cost] = data;
+      return { statusMsg, docs: { wbs, timeline, resource, cost } };
     },
   },
 };
 
 function getDownloadUrl(fileObj) {
   if (!fileObj) return null;
-  if (typeof fileObj === "string" && fileObj.startsWith("http")) return fileObj;
-  if (typeof fileObj === "string")
+  // gs:// URIs are not directly fetchable — use path instead
+  if (typeof fileObj === "string" && fileObj.startsWith("https://")) return fileObj;
+  if (typeof fileObj === "string" && !fileObj.startsWith("gs://"))
     return `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
-  const filePath = fileObj?.path ?? fileObj?.url ?? fileObj?.name;
-  if (!filePath) return null;
-  return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
+  // Object shape: prefer path over gs:// url
+  const filePath = fileObj?.path ?? fileObj?.name;
+  if (filePath) return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
+  // url field — skip gs:// values
+  if (fileObj?.url && !fileObj.url.startsWith("gs://"))
+    return fileObj.url;
+  return null;
 }
 
 export default function RunView() {
@@ -94,11 +108,18 @@ export default function RunView() {
   const [projectName, setProjectName] = useState("");
   const [loading,     setLoading]     = useState(true);
 
+  // Unified form state covering all docTypes
   const [form, setForm] = useState({
+    // goals-scope / execution fields
     projectName: "",
     problem:     "",
     summary:     "",
     longDesc:    "",
+    // project-plan fields
+    methodology: "",
+    milestones:  "",
+    resources:   "",
+    timeline:    "",
   });
 
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -126,7 +147,11 @@ export default function RunView() {
             projectName: runData.inputs.projectName ?? "",
             problem:     runData.inputs.problem     ?? "",
             summary:     runData.inputs.summary     ?? "",
-            longDesc:    runData.inputs.longDesc     ?? "",
+            longDesc:    runData.inputs.longDesc    ?? "",
+            methodology: runData.inputs.methodology ?? "",
+            milestones:  runData.inputs.milestones  ?? "",
+            resources:   runData.inputs.resources   ?? "",
+            timeline:    runData.inputs.timeline    ?? "",
           });
         }
 
@@ -176,6 +201,25 @@ export default function RunView() {
     if (typeof r?.createdAt === "number")
       return new Date(r.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
     return "—";
+  }
+
+  // Build inputs object to save to Firestore based on docType
+  function buildInputsPayload() {
+    if (run?.docType === "project-plan") {
+      return {
+        projectName: form.projectName,
+        methodology: form.methodology,
+        milestones:  form.milestones,
+        resources:   form.resources,
+        timeline:    form.timeline,
+      };
+    }
+    return {
+      projectName: form.projectName,
+      problem:     form.problem,
+      summary:     form.summary,
+      longDesc:    form.longDesc,
+    };
   }
 
   async function handleGenerate() {
@@ -239,12 +283,7 @@ export default function RunView() {
           documents:   newDocs,
           completedAt: Date.now(),
           projectName: form.projectName,
-          inputs: {
-            projectName: form.projectName,
-            problem:     form.problem,
-            summary:     form.summary,
-            longDesc:    form.longDesc,
-          },
+          inputs:      buildInputsPayload(),
         });
       }
     } catch (err) {
@@ -258,6 +297,7 @@ export default function RunView() {
   const meta       = run ? (DOC_TYPE_META[run.docType]   ?? { label: run.docType, icon: GoalsScopeIcon }) : null;
   const config     = run ? (DOC_TYPE_CONFIG[run.docType] ?? null) : null;
   const outputDocs = config?.outputDocs ?? [];
+  const isProjectPlan = run?.docType === "project-plan";
 
   return (
     <div className="rv-root">
@@ -317,6 +357,7 @@ export default function RunView() {
                 {/* ── LEFT: Inputs ── */}
                 <div className="rv-inputs">
 
+                  {/* Project Name — same for all docTypes */}
                   <div className="rv-field-group">
                     <label className="rv-label">Project Name (short)</label>
                     <input
@@ -328,40 +369,95 @@ export default function RunView() {
                     />
                   </div>
 
-                  <div className="rv-field-group">
-                    <label className="rv-label">What Problem is Being Solved?</label>
-                    <textarea
-                      className="rv-textarea"
-                      name="problem"
-                      value={form.problem}
-                      onChange={handleChange}
-                      rows={3}
-                    />
-                  </div>
+                  {/* ── Project Plan fields ── */}
+                  {isProjectPlan ? (
+                    <>
+                      <div className="rv-field-group">
+                        <label className="rv-label">Methodology</label>
+                        <input
+                          className="rv-input"
+                          name="methodology"
+                          placeholder="e.g. Agile, Waterfall, Scrum"
+                          value={form.methodology}
+                          onChange={handleChange}
+                        />
+                      </div>
 
-                  <div className="rv-field-group">
-                    <label className="rv-label">High-Level Summary (1–2 sentences)</label>
-                    <textarea
-                      className="rv-textarea"
-                      name="summary"
-                      value={form.summary}
-                      onChange={handleChange}
-                      rows={2}
-                    />
-                  </div>
+                      <div className="rv-field-group">
+                        <label className="rv-label">Milestones</label>
+                        <textarea
+                          className="rv-textarea"
+                          name="milestones"
+                          placeholder="e.g. M1 - Design complete, M2 - Dev complete"
+                          value={form.milestones}
+                          onChange={handleChange}
+                          rows={3}
+                        />
+                      </div>
 
-                  <div className="rv-field-group">
-                    <label className="rv-label">Longer Description / Requirements</label>
-                    <textarea
-                      className="rv-textarea"
-                      name="longDesc"
-                      value={form.longDesc}
-                      onChange={handleChange}
-                      rows={6}
-                    />
-                  </div>
+                      <div className="rv-field-group">
+                        <label className="rv-label">Resources</label>
+                        <textarea
+                          className="rv-textarea"
+                          name="resources"
+                          placeholder="e.g. 2 developers, 1 designer"
+                          value={form.resources}
+                          onChange={handleChange}
+                          rows={2}
+                        />
+                      </div>
 
-                  {/* File upload */}
+                      <div className="rv-field-group">
+                        <label className="rv-label">Timeline</label>
+                        <textarea
+                          className="rv-textarea"
+                          name="timeline"
+                          placeholder="e.g. 3 months, Q3 2026"
+                          value={form.timeline}
+                          onChange={handleChange}
+                          rows={2}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    /* ── Goals & Scope / Execution fields ── */
+                    <>
+                      <div className="rv-field-group">
+                        <label className="rv-label">What Problem is Being Solved?</label>
+                        <textarea
+                          className="rv-textarea"
+                          name="problem"
+                          value={form.problem}
+                          onChange={handleChange}
+                          rows={3}
+                        />
+                      </div>
+
+                      <div className="rv-field-group">
+                        <label className="rv-label">High-Level Summary (1–2 sentences)</label>
+                        <textarea
+                          className="rv-textarea"
+                          name="summary"
+                          value={form.summary}
+                          onChange={handleChange}
+                          rows={2}
+                        />
+                      </div>
+
+                      <div className="rv-field-group">
+                        <label className="rv-label">Longer Description / Requirements</label>
+                        <textarea
+                          className="rv-textarea"
+                          name="longDesc"
+                          value={form.longDesc}
+                          onChange={handleChange}
+                          rows={6}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── File upload — same for all docTypes ── */}
                   <div className="rv-field-group">
                     <label className="rv-label">
                       Upload Documents (PDF / DOCX / TXT)

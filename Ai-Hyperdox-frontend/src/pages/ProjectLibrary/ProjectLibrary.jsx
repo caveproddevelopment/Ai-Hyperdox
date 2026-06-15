@@ -31,19 +31,23 @@ const DOC_TYPE_META = {
   "project-plan": { label: "Project Plan",   icon: ProjectPlanIcon },
 };
 
+// Keys must match exactly what's stored in Firestore under run.documents
 const DOC_KEYS = [
+  // Goals & Scope
   { key: "goals",         filename: "Goals_Document"               },
   { key: "scope",         filename: "Scope_Document"               },
   { key: "risk",          filename: "Risk_Document"                },
   { key: "milestones",    filename: "Proposed_Milestones_Document" },
   { key: "resources",     filename: "Resource_Teams_Document"      },
+  // Execution
   { key: "executionPlan", filename: "Execution_Plan_Document"      },
+  // Project Plan (legacy single-doc key)
   { key: "projectPlan",   filename: "Project_Plan_Document"        },
-  // Project Plan (AIPM) documents — keys match app.py's pdfs dict
-  { key: "Work Breakdown Structure (WBS)", filename: "WBS_Document"               },
-  { key: "Project Timeline",               filename: "Project_Timeline_Document"   },
-  { key: "Resource Allocation Plan",       filename: "Resource_Allocation_Document"},
-  { key: "Cost Management Plan",           filename: "Cost_Management_Document"    },
+  // Project Plan (AIPM) — short keys matching Firestore documents map
+  { key: "wbs",           filename: "Work_Breakdown_Structure_WBS" },
+  { key: "timeline",      filename: "Project_Timeline"             },
+  { key: "resource",      filename: "Resource_Allocation_Plan"     },
+  { key: "cost",          filename: "Cost_Management_Plan"         },
 ];
 
 const iconModules = import.meta.glob(
@@ -82,25 +86,21 @@ async function fetchFileBlob(fileObj) {
       const bytes   = await getBytes(fileRef);          // ArrayBuffer
       return new Blob([bytes], { type: "application/pdf" });
     } catch (sdkErr) {
-      // If SDK fails (e.g. path wrong), fall through to Strategy 2
       console.warn("SDK getBytes failed, falling back to proxy fetch:", sdkErr?.code ?? sdkErr?.message);
     }
   }
 
   // ── Strategy 2: Resolve URL, then route through backend proxy ────
-  // Direct signed URLs expire quickly; routing through BASE_URL/download
-  // lets the backend re-sign or serve the file reliably.
   let resolvedUrl = null;
 
   if (typeof fileObj === "string") {
     if (fileObj.startsWith("http")) {
-      resolvedUrl = fileObj;                                                      // already a full URL
+      resolvedUrl = fileObj;
     } else {
-      resolvedUrl = `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;  // plain backend path
+      resolvedUrl = `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
     }
   } else if (typeof fileObj === "object") {
-    if (fileObj?.url) {
-      // url may be a full http URL or a plain backend path like /tmp/...
+    if (fileObj?.url && !fileObj.url.startsWith("gs://")) {
       resolvedUrl = fileObj.url.startsWith("http")
         ? fileObj.url
         : `${BASE_URL}/download?path=${encodeURIComponent(fileObj.url)}`;
@@ -112,9 +112,6 @@ async function fetchFileBlob(fileObj) {
   }
 
   if (!resolvedUrl) {
-    // ── Last-resort fallback ──────────────────────────────────────
-    // If fileObj is some other shape (Firestore Timestamp, nested object, etc.)
-    // try converting it to a string and sending to the backend proxy.
     const coerced = typeof fileObj === "object" && fileObj !== null
       ? (fileObj?.downloadURL ?? fileObj?.fileUrl ?? fileObj?.uri ?? fileObj?.link ?? null)
       : null;
@@ -128,8 +125,6 @@ async function fetchFileBlob(fileObj) {
 
   if (!resolvedUrl) throw new Error("No download URL or storage path available.");
 
-  // KEY FIX: if it's an external signed URL (not already our backend),
-  // proxy it through the backend to avoid expiry & CORS issues.
   const fetchUrl = resolvedUrl.startsWith("http") && !resolvedUrl.startsWith(BASE_URL)
     ? `${BASE_URL}/download?path=${encodeURIComponent(resolvedUrl)}`
     : resolvedUrl;
@@ -137,7 +132,6 @@ async function fetchFileBlob(fileObj) {
   const res = await fetch(fetchUrl);
   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
 
-  // Guard: reject HTML (expired signed URL served the SPA's index.html)
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.startsWith("text/html")) {
     throw new Error(
@@ -215,15 +209,13 @@ export default function ProjectLibrary() {
   }
 
   // ── Delete run + Firebase Storage files ──────────────────────────────────
-  // FIX: Storage cleanup is best-effort. A storage error logs a warning but
-  // does NOT block the Firestore delete — the run record is always removed.
   async function handleDelete(runId) {
     if (!window.confirm("Permanently delete this run? This cannot be undone.")) return;
 
     const run = runs.find(r => r.id === runId);
     if (!run) return;
 
-    // ── Step 1: Best-effort storage cleanup ─────────────────────────
+    // Step 1: Best-effort storage cleanup
     const storage = getStorage();
     if (run.documents) {
       const storageDeletes = DOC_KEYS
@@ -235,19 +227,18 @@ export default function ProjectLibrary() {
         const results = await Promise.allSettled(storageDeletes);
         const failed  = results.filter(r =>
           r.status === "rejected" &&
-          r.reason?.code !== "storage/object-not-found"  // already gone = fine
+          r.reason?.code !== "storage/object-not-found"
         );
         if (failed.length > 0) {
-          // Warn but do NOT return — Firestore delete still proceeds below
           console.warn(
-            `${failed.length} storage file(s) could not be deleted (manual cleanup may be needed).`,
+            `${failed.length} storage file(s) could not be deleted.`,
             failed.map(f => f.reason?.code ?? f.reason?.message)
           );
         }
       }
     }
 
-    // ── Step 2: Always delete the Firestore run document ────────────
+    // Step 2: Always delete the Firestore run document
     try {
       await deleteDoc(doc(db, "runs", runId));
       setRuns(prev => prev.filter(r => r.id !== runId));
