@@ -1,19 +1,25 @@
 // src/components/Navbar/Navbar.jsx
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import logo from '../../assets/AI Hyperdox Logo Square V2.png';
 import './Navbar.css';
 
 export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { currentUser } = useAuth();
 
   const activeClass = (path) => location.pathname === path ? 'nav-link-active' : '';
 
   return (
     <nav className="navbar">
 
-      {/* ── Logo → homepage ── */}
-      <div className="nav-logo" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
+      {/* ── Logo → dashboard if signed in, homepage if not ── */}
+      <div
+        className="nav-logo"
+        onClick={() => navigate(currentUser ? '/dashboard' : '/')}
+        style={{ cursor: 'pointer' }}
+      >
         <img src={logo} alt="AI Hyperdox Logo" className="logo-img" />
       </div>
 

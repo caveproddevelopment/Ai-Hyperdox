@@ -22,14 +22,14 @@ const DOCUMENT_TYPES = [
     description: "Define project objectives, boundaries and success criteria.",
   },
   {
-    key:         "execution",
-    label:       "Execution",
-    description: "Outline the steps, resources and timeline to deliver the project.",
-  },
-  {
     key:         "project-plan",
     label:       "Project Plan",
     description: "Full structured plan covering milestones, tasks and owners.",
+  },
+  {
+    key:         "execution",
+    label:       "Execution",
+    description: "Outline the steps, resources and timeline to deliver the project.",
   },
 ];
 

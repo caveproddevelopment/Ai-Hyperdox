@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { db, functions, storage } from "../../firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, increment } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { ref, getDownloadURL } from "firebase/storage";
 import logo from '../../assets/AI Hyperdox Logo Square V2.png';
@@ -62,13 +62,13 @@ export default function ProjectPlanning() {
     resources:    "",
     methodology:  "Agile",
   });
-  const [budgetFile,  setBudgetFile]  = useState(null);
-  const [fileError,   setFileError]   = useState("");
-  const [isDragging,  setIsDragging]  = useState(false);
-  const [status,      setStatus]      = useState("");
-  const [docs,        setDocs]        = useState(null);
-  const [loading,     setLoading]     = useState(false);
-  const [currentRunId, setCurrentRunId] = useState(null);
+  const [budgetFile,     setBudgetFile]     = useState(null);
+  const [fileError,      setFileError]      = useState("");
+  const [isDragging,     setIsDragging]     = useState(false);
+  const [status,         setStatus]         = useState("");
+  const [docs,           setDocs]           = useState(null);
+  const [loading,        setLoading]        = useState(false);
+  const [currentRunId,   setCurrentRunId]   = useState(null);
   const [downloadingKey, setDownloadingKey] = useState(null);
 
   useEffect(() => {
@@ -187,7 +187,10 @@ export default function ProjectPlanning() {
       });
       setLastRunDate(runDate);
 
-      await updateDoc(doc(db, "projects", projectId), { lastProjectPlanRun: runDate });
+      await updateDoc(doc(db, "projects", projectId), {
+        lastProjectPlanRun: runDate,
+        runCount: increment(1),
+      });
 
       if (runId) {
         await updateDoc(doc(db, "runs", runId), {
@@ -236,7 +239,17 @@ export default function ProjectPlanning() {
         downloadUrl = `${BASE_URL}/download?path=${encodeURIComponent(fallbackPath)}`;
       }
 
-      window.open(downloadUrl, "_blank", "noopener,noreferrer");
+      // Direct download — no new tab
+      const res = await fetch(downloadUrl);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = label.replace(' (Download)', '') + '.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
     } catch (err) {
       console.error(`Failed to download ${label}:`, err);
       setStatus(`Failed to download ${label}: ${err.message || "Unknown error"}`);

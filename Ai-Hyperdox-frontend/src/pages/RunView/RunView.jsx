@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { db, functions } from "../../firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, increment } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import logo            from "../../assets/AI Hyperdox Logo Square V2.png";
 import GoalsScopeIcon  from "../../assets/Documenticon/GoalsscopeIcon.png";
@@ -86,14 +86,11 @@ const DOC_TYPE_CONFIG = {
 
 function getDownloadUrl(fileObj) {
   if (!fileObj) return null;
-  // gs:// URIs are not directly fetchable — use path instead
   if (typeof fileObj === "string" && fileObj.startsWith("https://")) return fileObj;
   if (typeof fileObj === "string" && !fileObj.startsWith("gs://"))
     return `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
-  // Object shape: prefer path over gs:// url
   const filePath = fileObj?.path ?? fileObj?.name;
   if (filePath) return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
-  // url field — skip gs:// values
   if (fileObj?.url && !fileObj.url.startsWith("gs://"))
     return fileObj.url;
   return null;
@@ -108,28 +105,25 @@ export default function RunView() {
   const [projectName, setProjectName] = useState("");
   const [loading,     setLoading]     = useState(true);
 
-  // Unified form state covering all docTypes
   const [form, setForm] = useState({
-    // goals-scope / execution fields
     projectName: "",
     problem:     "",
     summary:     "",
     longDesc:    "",
-    // project-plan fields
     methodology: "",
     milestones:  "",
     resources:   "",
     timeline:    "",
   });
 
-  const [uploadedFile, setUploadedFile] = useState(null);
-  const [fileError,    setFileError]    = useState("");
-  const [isDragging,   setIsDragging]   = useState(false);
-
-  const [status,       setStatus]       = useState("");
-  const [docs,         setDocs]         = useState(null);
-  const [generating,   setGenerating]   = useState(false);
-  const [currentRunId, setCurrentRunId] = useState(null);
+  const [uploadedFile,   setUploadedFile]   = useState(null);
+  const [fileError,      setFileError]      = useState("");
+  const [isDragging,     setIsDragging]     = useState(false);
+  const [status,         setStatus]         = useState("");
+  const [docs,           setDocs]           = useState(null);
+  const [generating,     setGenerating]     = useState(false);
+  const [currentRunId,   setCurrentRunId]   = useState(null);
+  const [downloadingKey, setDownloadingKey] = useState(null);
 
   useEffect(() => {
     if (!runId || !projectId || !currentUser) return;
@@ -203,7 +197,6 @@ export default function RunView() {
     return "—";
   }
 
-  // Build inputs object to save to Firestore based on docType
   function buildInputsPayload() {
     if (run?.docType === "project-plan") {
       return {
@@ -220,6 +213,26 @@ export default function RunView() {
       summary:     form.summary,
       longDesc:    form.longDesc,
     };
+  }
+
+  async function handleDownload(url, label, key) {
+    setDownloadingKey(key);
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = label.replace(' (Download)', '') + '.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+    } catch (err) {
+      setStatus(`Download failed: ${err.message}`);
+    } finally {
+      setDownloadingKey(null);
+    }
   }
 
   async function handleGenerate() {
@@ -276,7 +289,11 @@ export default function RunView() {
       const runDate = new Date().toLocaleDateString("en-US", {
         year: "numeric", month: "long", day: "numeric",
       });
-      await updateDoc(doc(db, "projects", projectId), { lastGoalsScopeRun: runDate });
+
+      await updateDoc(doc(db, "projects", projectId), {
+        lastGoalsScopeRun: runDate,
+        runCount: increment(1),
+      });
 
       if (activeRunId) {
         await updateDoc(doc(db, "runs", activeRunId), {
@@ -357,7 +374,6 @@ export default function RunView() {
                 {/* ── LEFT: Inputs ── */}
                 <div className="rv-inputs">
 
-                  {/* Project Name — same for all docTypes */}
                   <div className="rv-field-group">
                     <label className="rv-label">Project Name (short)</label>
                     <input
@@ -420,7 +436,6 @@ export default function RunView() {
                       </div>
                     </>
                   ) : (
-                    /* ── Goals & Scope / Execution fields ── */
                     <>
                       <div className="rv-field-group">
                         <label className="rv-label">What Problem is Being Solved?</label>
@@ -457,7 +472,7 @@ export default function RunView() {
                     </>
                   )}
 
-                  {/* ── File upload — same for all docTypes ── */}
+                  {/* ── File upload ── */}
                   <div className="rv-field-group">
                     <label className="rv-label">
                       Upload Documents (PDF / DOCX / TXT)
@@ -540,9 +555,14 @@ export default function RunView() {
                               <span className="rv-generating-text">Generating...</span>
                             </div>
                           ) : url ? (
-                            <a className="rv-download-link" href={url} target="_blank" rel="noreferrer">
-                              ⬇ Download
-                            </a>
+                            <button
+                              type="button"
+                              className="rv-download-link"
+                              onClick={() => handleDownload(url, label, key)}
+                              disabled={downloadingKey === key}
+                            >
+                              {downloadingKey === key ? "Preparing..." : "⬇ Download"}
+                            </button>
                           ) : (
                             <span className="rv-output-empty-icon">📄</span>
                           )}

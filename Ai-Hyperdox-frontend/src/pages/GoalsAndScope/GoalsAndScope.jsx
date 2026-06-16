@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { db, functions, storage } from "../../firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, increment } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { ref, getDownloadURL } from "firebase/storage";
 import logo from '../../assets/AI Hyperdox Logo Square V2.png';
@@ -69,7 +69,7 @@ export default function GoalsAndScope() {
   const [docs,         setDocs]         = useState(null);
   const [loading,      setLoading]      = useState(false);
   const [currentRunId, setCurrentRunId] = useState(null);
-  const [downloadingKey, setDownloadingKey] = useState(null); // tracks which doc is being prepared for download
+  const [downloadingKey, setDownloadingKey] = useState(null);
 
   useEffect(() => {
     if (!projectId) return;
@@ -176,7 +176,10 @@ export default function GoalsAndScope() {
       });
       setLastRunDate(runDate);
 
-      await updateDoc(doc(db, "projects", projectId), { lastGoalsScopeRun: runDate });
+      await updateDoc(doc(db, "projects", projectId), {
+        lastGoalsScopeRun: runDate,
+        runCount: increment(1),
+      });
 
       if (runId) {
         await updateDoc(doc(db, "runs", runId), {
@@ -201,23 +204,6 @@ export default function GoalsAndScope() {
     }
   }
 
-  /**
-   * Resolves a downloadable URL for a generated document and triggers the download.
-   *
-   * Document objects from the backend look like:
-   *   { url: "gs://bucket/generated-docs/.../file.pdf", path: "generated-docs/.../file.pdf" }
-   *
-   * - If `path` is present → it's stored in Firebase Storage. We use the Firebase
-   *   Storage SDK (getDownloadURL) to get a fresh, authenticated download URL.
-   *   This works regardless of backend redeploys/restarts, since the file lives
-   *   permanently in Firebase Storage and is keyed by `path`, which is saved in
-   *   Firestore (via the `runs` and `projects` documents) — so it's accessible
-   *   at any point in the future.
-   * - If `url` starts with "http" → it's already a usable direct URL.
-   * - Otherwise (legacy /tmp fallback, no Firebase configured at generation time)
-   *   → fall back to the backend's /download?path= endpoint. Note: this only
-   *   works while the backend instance that generated it is still running.
-   */
   async function downloadDocument(docKey, fileObj, label) {
     if (!fileObj) return;
 
@@ -229,7 +215,6 @@ export default function GoalsAndScope() {
       const urlField    = fileObj?.url;
 
       if (storagePath) {
-        // Firebase Storage path — get a fresh download URL via the SDK.
         const fileRef = ref(storage, storagePath);
         downloadUrl = await getDownloadURL(fileRef);
       } else if (typeof urlField === "string" && urlField.startsWith("http")) {
@@ -237,14 +222,22 @@ export default function GoalsAndScope() {
       } else if (typeof fileObj === "string" && fileObj.startsWith("http")) {
         downloadUrl = fileObj;
       } else {
-        // Legacy /tmp fallback via backend
         const fallbackPath = typeof fileObj === "string" ? fileObj : (urlField ?? fileObj?.name);
         if (!fallbackPath) throw new Error("No valid file reference found.");
         downloadUrl = `${BASE_URL}/download?path=${encodeURIComponent(fallbackPath)}`;
       }
 
-      // Trigger download in a new tab
-      window.open(downloadUrl, "_blank", "noopener,noreferrer");
+      // Direct download — no new tab
+      const res = await fetch(downloadUrl);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = label.replace(' (Download)', '') + '.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
     } catch (err) {
       console.error(`Failed to download ${label}:`, err);
       setStatus(`Failed to download ${label}: ${err.message || "Unknown error"}`);
