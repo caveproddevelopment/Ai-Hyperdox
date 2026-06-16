@@ -61,9 +61,16 @@ const NAV_LINKS = [
 ];
 
 // ── Deletes every run + generated file belonging to a project, then the project itself ──
-async function deleteProjectAndDocuments(projectId) {
-  // 1. Find every run tied to this project.
-  const runsQuery = query(collection(db, "runs"), where("projectId", "==", projectId));
+// `uid` is required: Firestore's security rule for /runs checks `userId`, so the query's
+// where clauses must include it too, or Firestore rejects the whole list operation
+// (it can't prove every potential match would pass a rule it doesn't filter on).
+async function deleteProjectAndDocuments(projectId, uid) {
+  // 1. Find every run tied to this project (scoped to the current user, matching the rule).
+  const runsQuery = query(
+    collection(db, "runs"),
+    where("projectId", "==", projectId),
+    where("userId", "==", uid)
+  );
   const runsSnap = await getDocs(runsQuery);
 
   // 2. For each run, delete every generated PDF referenced in its `documents` map.
@@ -213,7 +220,7 @@ export default function Dashboard() {
     setDeleting(true);
     setDeleteError("");
     try {
-      await deleteProjectAndDocuments(deleteTarget.id);
+      await deleteProjectAndDocuments(deleteTarget.id, currentUser.uid);
       setDeletedName(deleteTarget.name);
       setDeleteTarget(null);
     } catch (err) {
