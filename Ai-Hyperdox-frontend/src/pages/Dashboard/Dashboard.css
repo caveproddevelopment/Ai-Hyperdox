@@ -338,3 +338,120 @@
   .dash-project-thumb { height: 96px; }
   .dash-create-card { width: 130px; height: 96px; }
 }
+/* ── Delete project link (append to Dashboard.css) ── */
+
+.dash-proj-link-delete {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: center;
+  cursor: pointer;
+  color: #e63946;
+  transition: opacity 0.18s;
+}
+
+.dash-proj-link-delete:hover {
+  opacity: 0.7;
+  text-decoration: underline;
+}
+
+/* ── Confirmation modals (matches light main-content theme) ── */
+
+.dash-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dash-modal-box {
+  background: #fff;
+  color: #111;
+  font-family: 'Exo 2', 'Segoe UI', sans-serif;
+  border-radius: 4px;
+  padding: 26px 28px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  border: 1px solid #e8e8e8;
+}
+
+.dash-modal-title {
+  margin: 0 0 12px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111;
+}
+
+.dash-modal-body {
+  margin: 0;
+  color: #666;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.dash-modal-error {
+  margin: 10px 0 0 0;
+  color: #e63946;
+  font-size: 0.8rem;
+}
+
+.dash-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.dash-modal-actions-end {
+  justify-content: flex-end;
+}
+
+.dash-modal-btn {
+  padding: 8px 18px;
+  border-radius: 2px;
+  font-size: 0.82rem;
+  font-family: 'Exo 2', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.18s, border-color 0.18s;
+}
+
+.dash-modal-btn-cancel {
+  background: transparent;
+  border: 1px solid #ccc;
+  color: #444;
+}
+
+.dash-modal-btn-cancel:hover {
+  border-color: #999;
+}
+
+.dash-modal-btn-danger {
+  background: #e63946;
+  color: #fff;
+}
+
+.dash-modal-btn-danger:hover {
+  opacity: 0.85;
+}
+
+.dash-modal-btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dash-modal-btn-primary {
+  background: #00d4ff;
+  color: #000;
+}
+
+.dash-modal-btn-primary:hover {
+  opacity: 0.85;
+}

@@ -2,8 +2,19 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { db } from "../../firebase";
-import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
+import { db, storage } from "../../firebase"; // make sure `storage` is exported from firebase.js
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  orderBy,
+  doc,
+  deleteDoc,
+  getDocs,
+  writeBatch,
+} from "firebase/firestore";
+import { ref as storageRef, deleteObject } from "firebase/storage";
 import logo from '../../assets/AI Hyperdox Logo Square V2.png';
 import "./Dashboard.css";
 
@@ -49,6 +60,43 @@ const NAV_LINKS = [
   { label: "About Us",     to: "/about"       },
 ];
 
+// ── Deletes every run + generated file belonging to a project, then the project itself ──
+async function deleteProjectAndDocuments(projectId) {
+  // 1. Find every run tied to this project.
+  const runsQuery = query(collection(db, "runs"), where("projectId", "==", projectId));
+  const runsSnap = await getDocs(runsQuery);
+
+  // 2. For each run, delete every generated PDF referenced in its `documents` map.
+  //    Keys vary by docType (goals/milestones/resources/risk/scope vs cost/resource/timeline/wbs),
+  //    so we iterate values rather than hardcoding key names.
+  await Promise.all(
+    runsSnap.docs.map(async (runDoc) => {
+      const documentsMap = runDoc.data().documents || {};
+      const fileEntries = Object.values(documentsMap); // [{path, url}, ...]
+
+      await Promise.all(
+        fileEntries.map(async (entry) => {
+          if (!entry?.url) return;
+          try {
+            await deleteObject(storageRef(storage, entry.url)); // entry.url is a full gs:// URI
+          } catch (err) {
+            console.warn(`Could not delete storage file ${entry.path}:`, err);
+          }
+        })
+      );
+    })
+  );
+
+  // 3. Batch-delete the run documents themselves (Firestore batches cap at 500 ops,
+  //    so chunk if a project could ever have more than that many runs).
+  const batch = writeBatch(db);
+  runsSnap.docs.forEach((runDoc) => batch.delete(runDoc.ref));
+  await batch.commit();
+
+  // 4. Finally, delete the project document.
+  await deleteDoc(doc(db, "projects", projectId));
+}
+
 // ── Create New Project card ──────────────────────────────────────
 function CreateCard({ onClick }) {
   return (
@@ -60,7 +108,7 @@ function CreateCard({ onClick }) {
 }
 
 // ── Project Card ─────────────────────────────────────────────────
-function ProjectCard({ project }) {
+function ProjectCard({ project, onDeleteClick }) {
   const iconUrl = resolveIcon(project.icon);
 
   return (
@@ -85,6 +133,24 @@ function ProjectCard({ project }) {
         <Link to={`/project/${project.id}/run`} className="dash-proj-link">
           New Document Run
         </Link>
+        <button
+          type="button"
+          className="dash-proj-link dash-proj-link-delete"
+          onClick={() => onDeleteClick(project)}
+        >
+          Delete Project
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Simple confirm/result modal ──────────────────────────────────
+function Modal({ children }) {
+  return (
+    <div className="dash-modal-overlay">
+      <div className="dash-modal-box">
+        {children}
       </div>
     </div>
   );
@@ -98,6 +164,12 @@ export default function Dashboard() {
   const [profileOpen,     setProfileOpen]     = useState(false);
   const [projects,        setProjects]        = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
+
+  // ── Delete flow state ──
+  const [deleteTarget, setDeleteTarget] = useState(null);   // project pending confirmation
+  const [deleting,      setDeleting]      = useState(false); // in-progress flag
+  const [deleteError,   setDeleteError]   = useState("");
+  const [deletedName,   setDeletedName]   = useState(null);  // set after success, drives success modal
 
   const initials = getInitials(currentUser);
 
@@ -129,6 +201,27 @@ export default function Dashboard() {
 
   function handleCreateProject() {
     navigate("/project/new");
+  }
+
+  function handleDeleteClick(project) {
+    setDeleteError("");
+    setDeleteTarget(project);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteProjectAndDocuments(deleteTarget.id);
+      setDeletedName(deleteTarget.name);
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error("Error deleting project:", err);
+      setDeleteError("Something went wrong while deleting. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -201,12 +294,67 @@ export default function Dashboard() {
           {loadingProjects
             ? <p style={{ color: "#888", fontSize: "0.85rem" }}>Loading projects...</p>
             : projects.map(project => (
-                <ProjectCard key={project.id} project={project} />
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  onDeleteClick={handleDeleteClick}
+                />
               ))
           }
         </section>
 
       </main>
+
+      {/* ── Pre-delete confirmation ── */}
+      {deleteTarget && (
+        <Modal>
+          <h3 className="dash-modal-title">Delete "{deleteTarget.name}"?</h3>
+          <p className="dash-modal-body">
+            This will permanently delete this project and every document inside it.
+            This action cannot be undone.
+          </p>
+          {deleteError && (
+            <p className="dash-modal-error">{deleteError}</p>
+          )}
+          <div className="dash-modal-actions">
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+              className="dash-modal-btn dash-modal-btn-cancel"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmDelete}
+              disabled={deleting}
+              className="dash-modal-btn dash-modal-btn-danger"
+            >
+              {deleting ? "Deleting…" : "Delete Permanently"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Post-delete confirmation ── */}
+      {deletedName && (
+        <Modal>
+          <h3 className="dash-modal-title">Project Deleted</h3>
+          <p className="dash-modal-body">
+            "{deletedName}" and all of its documents have been permanently deleted.
+          </p>
+          <div className="dash-modal-actions dash-modal-actions-end">
+            <button
+              type="button"
+              onClick={() => setDeletedName(null)}
+              className="dash-modal-btn dash-modal-btn-primary"
+            >
+              OK
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
