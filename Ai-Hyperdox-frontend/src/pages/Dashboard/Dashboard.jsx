@@ -77,9 +77,11 @@ function ProjectCard({ project }) {
         <Link to={`/project/${project.id}/edit`} className="dash-proj-link">
           Edit Details
         </Link>
-        <Link to={`/project/${project.id}/library`} className="dash-proj-link">
-          See Project Library
-        </Link>
+        {project.runCount > 0 && (
+          <Link to={`/project/${project.id}/library`} className="dash-proj-link">
+            See Project Library
+          </Link>
+        )}
         <Link to={`/project/${project.id}/run`} className="dash-proj-link">
           New Document Run
         </Link>
@@ -134,7 +136,6 @@ export default function Dashboard() {
 
       {/* ── Left Sidebar ── */}
       <aside className="dash-sidebar">
-        {/* ✅ Fixed: navigates to /dashboard instead of / */}
         <Link to="/dashboard" className="dash-logo-wrap">
           <div className="dash-logo-icon">
             <img src={logo} alt="AI Hyperdox" />
