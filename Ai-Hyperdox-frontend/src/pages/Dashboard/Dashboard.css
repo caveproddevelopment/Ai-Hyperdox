@@ -338,7 +338,8 @@
   .dash-project-thumb { height: 96px; }
   .dash-create-card { width: 130px; height: 96px; }
 }
-/* ── Delete project link (append to Dashboard.css) ── */
+
+/* ── Delete project link ── */
 
 .dash-proj-link-delete {
   background: none;
@@ -401,11 +402,45 @@
   font-size: 0.8rem;
 }
 
+/* ── Checkbox confirmation ── */
+
+.dash-modal-checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 18px 0 0;
+  font-size: 0.82rem;
+  color: #444;
+  cursor: pointer;
+  line-height: 1.45;
+  user-select: none;
+}
+
+.dash-modal-checkbox-label:has(.dash-modal-checkbox:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.dash-modal-checkbox {
+  margin-top: 2px;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: #e63946;
+}
+
+.dash-modal-checkbox:disabled {
+  cursor: not-allowed;
+}
+
+/* ── Modal actions ── */
+
 .dash-modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 22px;
+  margin-top: 20px;
 }
 
 .dash-modal-actions-end {
@@ -429,8 +464,13 @@
   color: #444;
 }
 
-.dash-modal-btn-cancel:hover {
+.dash-modal-btn-cancel:hover:not(:disabled) {
   border-color: #999;
+}
+
+.dash-modal-btn-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .dash-modal-btn-danger {
@@ -438,12 +478,12 @@
   color: #fff;
 }
 
-.dash-modal-btn-danger:hover {
+.dash-modal-btn-danger:hover:not(:disabled) {
   opacity: 0.85;
 }
 
 .dash-modal-btn-danger:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 

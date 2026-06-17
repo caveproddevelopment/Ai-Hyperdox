@@ -173,10 +173,11 @@ export default function Dashboard() {
   const [loadingProjects, setLoadingProjects] = useState(true);
 
   // ── Delete flow state ──
-  const [deleteTarget, setDeleteTarget] = useState(null);   // project pending confirmation
-  const [deleting,      setDeleting]      = useState(false); // in-progress flag
-  const [deleteError,   setDeleteError]   = useState("");
-  const [deletedName,   setDeletedName]   = useState(null);  // set after success, drives success modal
+  const [deleteTarget,    setDeleteTarget]    = useState(null);   // project pending confirmation
+  const [deleting,        setDeleting]        = useState(false);  // in-progress flag
+  const [deleteError,     setDeleteError]     = useState("");
+  const [deletedName,     setDeletedName]     = useState(null);   // set after success, drives success modal
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);  // checkbox gate
 
   const initials = getInitials(currentUser);
 
@@ -212,7 +213,13 @@ export default function Dashboard() {
 
   function handleDeleteClick(project) {
     setDeleteError("");
+    setDeleteConfirmed(false); // always reset checkbox when opening modal
     setDeleteTarget(project);
+  }
+
+  function handleCancelDelete() {
+    setDeleteTarget(null);
+    setDeleteConfirmed(false);
   }
 
   async function confirmDelete() {
@@ -223,6 +230,7 @@ export default function Dashboard() {
       await deleteProjectAndDocuments(deleteTarget.id, currentUser.uid);
       setDeletedName(deleteTarget.name);
       setDeleteTarget(null);
+      setDeleteConfirmed(false);
     } catch (err) {
       console.error("Error deleting project:", err);
       setDeleteError("Something went wrong while deleting. Please try again.");
@@ -320,13 +328,26 @@ export default function Dashboard() {
             This will permanently delete this project and every document inside it.
             This action cannot be undone.
           </p>
+
+          {/* ── Checkbox gate ── */}
+          <label className="dash-modal-checkbox-label">
+            <input
+              type="checkbox"
+              checked={deleteConfirmed}
+              onChange={(e) => setDeleteConfirmed(e.target.checked)}
+              disabled={deleting}
+              className="dash-modal-checkbox"
+            />
+            I understand this action is permanent and cannot be undone
+          </label>
+
           {deleteError && (
             <p className="dash-modal-error">{deleteError}</p>
           )}
           <div className="dash-modal-actions">
             <button
               type="button"
-              onClick={() => setDeleteTarget(null)}
+              onClick={handleCancelDelete}
               disabled={deleting}
               className="dash-modal-btn dash-modal-btn-cancel"
             >
@@ -335,7 +356,7 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={confirmDelete}
-              disabled={deleting}
+              disabled={deleting || !deleteConfirmed}
               className="dash-modal-btn dash-modal-btn-danger"
             >
               {deleting ? "Deleting…" : "Delete Permanently"}
