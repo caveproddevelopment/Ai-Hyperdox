@@ -1,4 +1,5 @@
-﻿import { createContext, useContext, useEffect, useState } from "react";
+﻿// src/context/AuthContext.jsx
+import { createContext, useContext, useEffect, useState } from "react";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -18,6 +19,10 @@ const AuthContext = createContext();
 export function useAuth() {
   return useContext(AuthContext);
 }
+
+// ── Keep these two in sync with src/hooks/useIdleLogout.js ──
+const STORAGE_KEY = "aihyperdox_last_activity";
+const IDLE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
@@ -54,11 +59,16 @@ export function AuthProvider({ children }) {
     return userCredential;
   }
 
-  function login(email, password) {
-    return signInWithEmailAndPassword(auth, email, password);
+  async function login(email, password) {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    // Stamp activity immediately so a tab closed right after sign-in
+    // still has a baseline timestamp to check against on reopen.
+    localStorage.setItem(STORAGE_KEY, Date.now().toString());
+    return result;
   }
 
   function logout() {
+    localStorage.removeItem(STORAGE_KEY);
     return signOut(auth);
   }
 
@@ -82,6 +92,9 @@ export function AuthProvider({ children }) {
         totalRunsUsed:     0,
       });
     }
+
+    // Stamp activity immediately, same reasoning as email login above.
+    localStorage.setItem(STORAGE_KEY, Date.now().toString());
 
     return userCredential;
   }
@@ -125,7 +138,29 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const lastActivity = localStorage.getItem(STORAGE_KEY);
+        const now = Date.now();
+
+        if (lastActivity && now - parseInt(lastActivity, 10) > IDLE_TIMEOUT) {
+          // Too much time has passed since the last recorded activity —
+          // force sign out instead of trusting the persisted Firebase session.
+          try {
+            await signOut(auth);
+          } catch (err) {
+            console.error("Forced idle sign-out failed:", err);
+          }
+          localStorage.removeItem(STORAGE_KEY);
+          setCurrentUser(null);
+          setLoading(false);
+          return;
+        }
+      } else {
+        // No user session at all — make sure stale timestamp doesn't linger.
+        localStorage.removeItem(STORAGE_KEY);
+      }
+
       setCurrentUser(user);
       setLoading(false);
     });
