@@ -52,21 +52,21 @@ export default function Home() {
             <p className="positive">A Better World For All Mankind</p>
           </div>
 
+          {/* CTA — now part of hero-right, left-aligned under outcome list */}
+          <div className="cta-section">
+            <button className="cta-btn" onClick={() => navigate('/signup')}>
+              GET STARTED TODAY FOR FREE
+            </button>
+
+            <p className="cta-sub">
+              Your First 3 Full Document<br />
+              Runs Are Free
+            </p>
+          </div>
+
         </div>
 
       </main>
-
-      {/* CTA */}
-      <div className="cta-section">
-        <button className="cta-btn" onClick={() => navigate('/signup')}>
-          GET STARTED TODAY FOR FREE
-        </button>
-
-        <p className="cta-sub">
-          Your First 3 Full Document<br />
-          Runs Are Free
-        </p>
-      </div>
 
     </div>
   );
