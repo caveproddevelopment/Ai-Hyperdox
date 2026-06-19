@@ -1,6 +1,7 @@
 // src/App.jsx
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import ProtectedLayout from './components/ProtectedLayout/ProtectedLayout'; 
 import Home from "./pages/Home/Home";
 import SignUp from './pages/SignUp/SignUp';
 import SignIn from './pages/SignIn/SignIn';
@@ -25,26 +26,31 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-      <Routes>
-        <Route path="/"                     element={<Home />} />
-        <Route path="/signup"               element={<SignUp />} />
-        <Route path="/confirm-registration" element={<ConfirmRegistration />} />
-        <Route path="/signin"               element={<SignIn />} />
-        <Route path="/forgot-password"      element={<ForgotPassword />} />
-        <Route path="/reset-password"       element={<ResetPassword />} />
-        <Route path="/contact"              element={<ContactUs />} />
-        <Route path="/about"               element={<AboutUs />} />
-        <Route path="/dashboard"            element={<Dashboard />} />
-        <Route path="/profile"              element={<Profile />} />
-        <Route path="/project/new"          element={<NewProject />} />
-        <Route path="/project/:projectId/edit" element={<EditProject />} />
-        <Route path="/project/:projectId/run" element={<NewDocumentRun />} />
-        <Route path="/project/:projectId/run/goals-scope" element={<GoalsAndScope />} />
-        <Route path="/billing"              element={<BillingSettings />} />
-        <Route path="/project/:projectId/library" element={<ProjectLibrary />} />
-        <Route path="/project/:projectId/run-view/:runId" element={<RunView />} />
-        <Route path="/project/:projectId/run/project-plan" element={<ProjectPlanning />} />
-      </Routes>
+        <Routes>
+          {/* ── Public routes ── */}
+          <Route path="/"                     element={<Home />} />
+          <Route path="/signup"               element={<SignUp />} />
+          <Route path="/confirm-registration" element={<ConfirmRegistration />} />
+          <Route path="/signin"               element={<SignIn />} />
+          <Route path="/forgot-password"      element={<ForgotPassword />} />
+          <Route path="/reset-password"       element={<ResetPassword />} />
+          <Route path="/contact"              element={<ContactUs />} />
+          <Route path="/about"                element={<AboutUs />} />
+
+          {/* ── Protected routes (idle-tracked + auth-guarded) ── */}
+          <Route element={<ProtectedLayout />}>
+            <Route path="/dashboard"                                    element={<Dashboard />} />
+            <Route path="/profile"                                      element={<Profile />} />
+            <Route path="/project/new"                                  element={<NewProject />} />
+            <Route path="/project/:projectId/edit"                      element={<EditProject />} />
+            <Route path="/project/:projectId/run"                       element={<NewDocumentRun />} />
+            <Route path="/project/:projectId/run/goals-scope"           element={<GoalsAndScope />} />
+            <Route path="/billing"                                      element={<BillingSettings />} />
+            <Route path="/project/:projectId/library"                   element={<ProjectLibrary />} />
+            <Route path="/project/:projectId/run-view/:runId"           element={<RunView />} />
+            <Route path="/project/:projectId/run/project-plan"          element={<ProjectPlanning />} />
+          </Route>
+        </Routes>
       </AuthProvider>
     </BrowserRouter>
   );

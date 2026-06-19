@@ -1,6 +1,6 @@
 // src/pages/SignIn/SignIn.jsx
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import Navbar from "../../components/Navbar/Navbar";
 import "./SignIn.css";
@@ -11,9 +11,20 @@ export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError]               = useState("");
   const [loading, setLoading]           = useState(false);
+  const [idleMessage, setIdleMessage]   = useState(null);
 
-  const { login, loginWithGoogle } = useAuth();   // ← add loginWithGoogle
+  const { login, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // ── Show "signed out due to inactivity" toast if redirected here from idle logout ──
+  useEffect(() => {
+    if (location.state?.reason === "idle") {
+      setIdleMessage("You were signed out due to inactivity. Please sign in again.");
+      // Clear the state so refresh / back-forward nav doesn't re-trigger the toast
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -55,7 +66,6 @@ export default function SignIn() {
       navigate("/dashboard");
     } catch (err) {
       if (err.code === "auth/account-exists-with-different-credential") {
-        // Same email already registered with email/password
         setError(
           "This email is already registered with a password. " +
           "Please sign in with your email and password instead."
@@ -77,6 +87,7 @@ export default function SignIn() {
       <div className="signin-card">
         <h1 className="signin-headline">Lets get you signed in</h1>
 
+        {idleMessage && <div className="signin-error">{idleMessage}</div>}
         {error && <div className="signin-error">{error}</div>}
 
         <form className="signin-form" onSubmit={handleSubmit} noValidate>
