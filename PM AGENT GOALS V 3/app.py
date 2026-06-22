@@ -10,6 +10,7 @@ import os
 import threading
 import json
 import uuid
+import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, send_file, abort
@@ -43,14 +44,27 @@ def init_firebase():
 
 def upload_to_storage(local_path: str, project_name: str, doc_title: str):
     """
-    Upload a local PDF to Firebase Storage.
-    Returns (public_url, storage_path).
-    Falls back to (local_path, None) if Firebase is not configured.
+    Upload a local PDF to Firebase Storage and return a PERMANENT,
+    browser-fetchable download URL.
 
-    FIX: replaced generate_signed_url() (max 7 days) with make_public() +
-    blob.public_url — no expiry at all, works forever.
-    Downloads from the frontend use the Firebase SDK getBytes() via the
-    storage path anyway, so the URL field is just a convenience reference.
+    FIX (replaces the gs:// URI approach): a gs:// URI can only be resolved
+    by the Firebase Admin/Client SDK (e.g. getBytes() in ProjectLibrary.jsx).
+    It can't be passed to a plain fetch()/<a href> in RunView.jsx or
+    GoalsAndScope.jsx. Signed URLs were also tried but expire after 7 days.
+
+    The fix: attach a Firebase Storage download token to the blob's
+    metadata. That produces a URL of the form:
+      https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<path>?alt=media&token=<uuid>
+    This URL:
+      - never expires
+      - works with uniform bucket-level access (no ACL/public changes needed)
+      - is fetchable directly via fetch()/<a href> from the browser
+      - is also still resolvable via the SDK using the returned storage path,
+        so ProjectLibrary.jsx's getBytes() strategy keeps working unchanged.
+
+    Returns (permanent_url, storage_path). Falls back to (local_path, None)
+    if Firebase isn't configured (so /download keeps working for that
+    session only, same as before).
     """
     if not init_firebase():
         return local_path, None   # fallback — /download endpoint works while server is alive
@@ -63,14 +77,22 @@ def upload_to_storage(local_path: str, project_name: str, doc_title: str):
         blob       = bucket_obj.blob(destination)
         blob.upload_from_filename(local_path, content_type="application/pdf")
 
-        # Uniform bucket-level access is enabled on this bucket, so per-object
-        # ACLs (make_public / signed URLs) are not allowed.
-        # The frontend downloads via Firebase SDK getBytes() using the storage
-        # path — no public URL is needed. Store the GCS URI as a reference only.
-        url = f"gs://{bucket_obj.name}/{destination}"
+        # Attach a Firebase download token → permanent, browser-accessible
+        # URL. No expiry. No ACL/public-access changes needed — this works
+        # fine even with uniform bucket-level access enabled.
+        download_token = str(uuid.uuid4())
+        blob.metadata  = {"firebaseStorageDownloadTokens": download_token}
+        blob.patch()  # persist the metadata so the token URL resolves
 
-        print(f"✅ Uploaded {filename} → {url}")
-        return url, destination   # ← return BOTH url and storage path
+        encoded_path  = urllib.parse.quote(destination, safe="")
+        permanent_url = (
+            f"https://firebasestorage.googleapis.com/v0/b/"
+            f"{bucket_obj.name}/o/{encoded_path}"
+            f"?alt=media&token={download_token}"
+        )
+
+        print(f"✅ Uploaded {filename} → permanent URL generated")
+        return permanent_url, destination   # ← real https:// URL + storage path
 
     except Exception as e:
         print(f"⚠ Upload failed for {local_path}: {e}")
@@ -190,10 +212,14 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
         content    = completion.choices[0].message.content
         local_path = create_pdf(project_name, title, content)
 
-        # Upload to Firebase Storage → get permanent public URL + storage path
+        # Upload to Firebase Storage → get a PERMANENT, browser-fetchable URL
         permanent_url, storage_path = upload_to_storage(local_path, project_name, title)
 
-        # Store both url and path so the frontend can delete from Storage later
+        # Store both url and path:
+        #   url  → real https://firebasestorage.googleapis.com/... link,
+        #          fetchable directly by RunView.jsx / GoalsAndScope.jsx
+        #   path → storage path, used by ProjectLibrary.jsx's SDK getBytes()
+        #          and for deleting the file from Storage later
         pdfs[title] = {
             "url":  permanent_url,
             "path": storage_path,   # None only when using /tmp fallback
@@ -235,8 +261,11 @@ def api_predict():
 @app.route("/download", methods=["GET"])
 def download_file():
     """
-    Fallback download endpoint — only used when Firebase Storage is not configured
-    and files are still on the Railway /tmp filesystem (i.e. same session).
+    Fallback download endpoint — only used when Firebase Storage is not
+    configured and files are still on the Railway /tmp filesystem (i.e.
+    same session). Once Firebase is configured, generate_documents()
+    returns a permanent firebasestorage.googleapis.com URL instead, and
+    this endpoint is never hit for new runs.
     """
     path = request.args.get("path")
     if not path:
