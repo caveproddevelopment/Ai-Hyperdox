@@ -47,7 +47,7 @@ const DOC_KEYS = [
   { key: "wbs",           filename: "Work_Breakdown_Structure_WBS" },
   { key: "timeline",      filename: "Project_Timeline"             },
   { key: "resource",      filename: "Resource_Allocation_Plan"     },
-  { key: "cost",          filename: "Cost_Management_Plan"         },
+  { key: "cost",           filename: "Cost_Management_Plan"        },
 ];
 
 const iconModules = import.meta.glob(
@@ -71,11 +71,25 @@ function getStoragePath(fileObj) {
   return null;
 }
 
+function getPermanentUrl(fileObj) {
+  if (!fileObj) return null;
+  if (typeof fileObj === "string" && fileObj.startsWith("https://")) return fileObj;
+  if (typeof fileObj === "object" && typeof fileObj.url === "string" && fileObj.url.startsWith("https://"))
+    return fileObj.url;
+  return null;
+}
+
 // ── Download a single file as a Blob ─────────────────────────────────────────
-// Strategy 1 (preferred): Firebase Storage SDK getBytes() — authenticated,
-//   no CORS issues, works even if the stored signed URL has expired.
-// Strategy 2: Route through backend /download proxy — avoids expired signed
-//   URLs by letting the server re-sign or re-fetch the file.
+// FIX: app.py now returns a PERMANENT Firebase download-token URL
+// (https://firebasestorage.googleapis.com/...?alt=media&token=...) in
+// fileObj.url, in addition to the storage path in fileObj.path. Order of
+// attempts, fastest/most-reliable first:
+//   1. SDK getBytes() via storage path — authenticated, zero CORS issues,
+//      works even if a URL field is missing or stale.
+//   2. Direct fetch() of the permanent URL — works without the SDK and
+//      without going through the Flask backend at all.
+//   3. Legacy: route through backend /download proxy for runs generated
+//      before this fix (plain /tmp paths, expired signed URLs, etc).
 async function fetchFileBlob(fileObj) {
   // ── Strategy 1: SDK path (avoids CORS entirely) ──────────────────
   const storagePath = getStoragePath(fileObj);
@@ -86,11 +100,25 @@ async function fetchFileBlob(fileObj) {
       const bytes   = await getBytes(fileRef);          // ArrayBuffer
       return new Blob([bytes], { type: "application/pdf" });
     } catch (sdkErr) {
-      console.warn("SDK getBytes failed, falling back to proxy fetch:", sdkErr?.code ?? sdkErr?.message);
+      console.warn("SDK getBytes failed, falling back:", sdkErr?.code ?? sdkErr?.message);
     }
   }
 
-  // ── Strategy 2: Resolve URL, then route through backend proxy ────
+  // ── Strategy 2: Direct fetch of the permanent Firebase URL ───────
+  const permanentUrl = getPermanentUrl(fileObj);
+  if (permanentUrl) {
+    try {
+      const res = await fetch(permanentUrl);
+      if (res.ok) {
+        const blob = await res.blob();
+        if (blob.size > 0) return blob;
+      }
+    } catch (directErr) {
+      console.warn("Direct fetch of permanent URL failed, falling back to proxy:", directErr?.message);
+    }
+  }
+
+  // ── Strategy 3: Resolve via legacy backend proxy ──────────────────
   let resolvedUrl = null;
 
   if (typeof fileObj === "string") {

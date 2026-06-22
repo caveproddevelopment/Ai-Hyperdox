@@ -84,15 +84,31 @@ const DOC_TYPE_CONFIG = {
   },
 };
 
+// FIX: app.py now returns a PERMANENT Firebase download-token URL
+// (https://firebasestorage.googleapis.com/...?alt=media&token=...) in the
+// `url` field. That URL never expires and is fetchable directly — no Flask
+// involved, no Railway dependency. Legacy branches are kept for runs that
+// were generated before this fix (gs:// has no direct branch since it
+// can't be fetch()'d from the browser at all).
 function getDownloadUrl(fileObj) {
   if (!fileObj) return null;
+
+  // ── Permanent Firebase URL (current format) ─────────────────────
   if (typeof fileObj === "string" && fileObj.startsWith("https://")) return fileObj;
+  if (typeof fileObj?.url === "string" && fileObj.url.startsWith("https://")) return fileObj.url;
+
+  // ── Legacy: plain string, /tmp path or other non-gs:// string ───
+  // Only works if the same Railway session that generated it is still alive.
   if (typeof fileObj === "string" && !fileObj.startsWith("gs://"))
     return `${BASE_URL}/download?path=${encodeURIComponent(fileObj)}`;
+
+  // ── Legacy: object with a /tmp-style path or name ────────────────
   const filePath = fileObj?.path ?? fileObj?.name;
-  if (filePath) return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
-  if (fileObj?.url && !fileObj.url.startsWith("gs://"))
-    return fileObj.url;
+  if (filePath && !filePath.startsWith("gs://"))
+    return `${BASE_URL}/download?path=${encodeURIComponent(filePath)}`;
+
+  // gs:// URI with no usable url/path → not directly downloadable here
+  // (ProjectLibrary.jsx's ZIP download resolves these via the SDK instead).
   return null;
 }
 
@@ -215,10 +231,25 @@ export default function RunView() {
     };
   }
 
+  // FIX: surface the real server error instead of a generic "Download
+  // failed" message, and reject non-PDF responses (e.g. an HTML error page
+  // from an expired legacy /download link) before treating them as a file.
   async function handleDownload(url, label, key) {
     setDownloadingKey(key);
     try {
       const res = await fetch(url);
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Server returned ${res.status}: ${errText.slice(0, 300)}`);
+      }
+
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("pdf") && !contentType.includes("octet-stream")) {
+        const errText = await res.text();
+        throw new Error(`Expected a PDF but got "${contentType}". ${errText.slice(0, 200)}`);
+      }
+
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -227,9 +258,10 @@ export default function RunView() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
     } catch (err) {
       setStatus(`Download failed: ${err.message}`);
+      console.error("Download error:", err);
     } finally {
       setDownloadingKey(null);
     }
