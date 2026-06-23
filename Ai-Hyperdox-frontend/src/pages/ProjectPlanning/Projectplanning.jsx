@@ -216,6 +216,12 @@ export default function ProjectPlanning() {
     }
   }
 
+  // FIX: the backend now returns a PERMANENT Firebase download-token URL in
+  // fileObj.url (https://firebasestorage.googleapis.com/...?alt=media&token=...).
+  // That URL never expires and is fetchable directly — check it FIRST,
+  // before falling back to the SDK getDownloadURL(path) call, which is only
+  // needed for older runs that only have a storage path saved. Errors now
+  // surface the real server response instead of a generic failure.
   async function downloadDocument(docKey, fileObj, label) {
     if (!fileObj) return;
 
@@ -226,21 +232,33 @@ export default function ProjectPlanning() {
       const storagePath = fileObj?.path;
       const urlField    = fileObj?.url;
 
-      if (storagePath) {
+      if (typeof urlField === "string" && urlField.startsWith("https://")) {
+        // Permanent Firebase download-token URL — fetch directly.
+        downloadUrl = urlField;
+      } else if (typeof fileObj === "string" && fileObj.startsWith("https://")) {
+        downloadUrl = fileObj;
+      } else if (storagePath) {
+        // Legacy: resolve via Firebase SDK using the storage path.
         const fileRef = ref(storage, storagePath);
         downloadUrl = await getDownloadURL(fileRef);
-      } else if (typeof urlField === "string" && urlField.startsWith("http")) {
-        downloadUrl = urlField;
-      } else if (typeof fileObj === "string" && fileObj.startsWith("http")) {
-        downloadUrl = fileObj;
       } else {
         const fallbackPath = typeof fileObj === "string" ? fileObj : (urlField ?? fileObj?.name);
         if (!fallbackPath) throw new Error("No valid file reference found.");
         downloadUrl = `${BASE_URL}/download?path=${encodeURIComponent(fallbackPath)}`;
       }
 
-      // Direct download — no new tab
       const res = await fetch(downloadUrl);
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Server returned ${res.status}: ${errText.slice(0, 300)}`);
+      }
+
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("pdf") && !contentType.includes("octet-stream")) {
+        const errText = await res.text();
+        throw new Error(`Expected a PDF but got "${contentType}". ${errText.slice(0, 200)}`);
+      }
+
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -249,7 +267,7 @@ export default function ProjectPlanning() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
     } catch (err) {
       console.error(`Failed to download ${label}:`, err);
       setStatus(`Failed to download ${label}: ${err.message || "Unknown error"}`);
