@@ -1,48 +1,94 @@
 """
-AIPM - Planning Agent (v2.0)
+AIPM - Planning Agent (v2.2, production wrapper restored)
 Agent 2 of the AI Hyperdox pipeline: Goals & Scope -> Planning -> Execution.
 
-WHAT CHANGED FROM v1.0 (and why):
+WHAT THIS PASS CHANGES (and why):
 
-1. REAL SYSTEM PROMPT, not a one-line placeholder (see agent.prompt.md for the
-   authored persona - that content is what's actually sent to the model now).
+The v2.2 agent logic (combined Guardrail PDF, validate_coverage(), validate_
+unspecified_markers(), the Agent-1-matching input model) came in as a bare Gradio
+app writing PDFs/JSON to /tmp only - the same situation Agent 1's v5.0 was received
+in. That would have shipped without the Flask REST API, CORS, Firebase Storage
+upload layer, or health check server that aihyperdox.com and Railway actually depend
+on. This pass does two things, both mechanical, neither touching agent behavior:
 
-2. INGESTS THE GOALS & SCOPE HANDOFF PACKAGE.
-   v1.0 expected the user to manually retype milestones/resources into text boxes
-   after reading a PDF from Agent 1. This version accepts the handoff JSON produced
-   by the Goals & Scope agent directly, so the pipeline actually chains: what Agent 1
-   decided about scope, risks, and milestones is available context for the WBS,
-   timeline, and resourcing here - not just whatever the user manually retypes.
-   Manual fields are still available and are treated as overrides/additions.
+1. RESTORES THE PRODUCTION WRAPPER, unchanged from how it works in this agent's own
+   last production release (v2.0): Flask app, origin-restricted CORS (aihyperdox.com,
+   the Vercel preview domain, and localhost:5173 for local frontend dev - NOT a
+   blanket CORS(app) the way Agent 1 uses, since that's the policy this agent already
+   shipped with), a port-8081 health-check thread, /api/predict, /download, and
+   /api/health. See upload_to_storage() for the permanent-URL mechanism.
 
-3. ONE STRUCTURED JSON CALL instead of 4 isolated ones, for the same reasons as
-   Agent 1: coherence (Resource Allocation can reference actual WBS task IDs, the
-   Timeline can reference actual WBS phases) plus speed and cost.
+2. ADDS BASE64 FILE-UPLOAD SUPPORT, matching the fix already applied to Agent 1
+   (Goals & Scope). v2.2's extract_text_from_file() and extract_handoff_json() only
+   understood Gradio-native shapes (a plain string path, or an object with .name) -
+   fine for the manual-test Blocks UI, but the React frontend's /api/predict call
+   can't hand over a filesystem path or a live File object across JSON; it has to
+   base64-encode the file via FileReader.readAsDataURL() and send a
+   {"name": str, "data": str} dict instead (optionally still carrying a
+   "data:<mime>;base64," prefix, stripped below). Both functions now accept that
+   shape alongside the existing ones, and MAX_UPLOAD_FILE_BYTES is a new server-side
+   size backstop independent of whatever the frontend enforces client-side. Every
+   generated output (4 PDFs + the new Combined PDF + the Backbone Plan JSON) is now
+   also run through upload_to_storage() before being returned, so ProjectPlanning.jsx
+   gets the same permanent-URL {"url":..., "path":...} shape it already expects from
+   Agent 1 - the bare v2.2 code was still returning raw /tmp paths, which don't
+   survive a redeploy and can't be fetched directly by the browser.
 
-4. ANTI-GENERICISM GUARDRAILS + open_questions, mirroring Agent 1's approach so the
-   whole pipeline behaves consistently: missing/vague input gets flagged, not papered
-   over with invented dates, names, or costs.
+WHAT v2.2 CHANGED FROM v2.1 (carried through unchanged in this pass):
 
-5. PRODUCES ITS OWN HANDOFF PACKAGE ("Backbone Plan" JSON) - this is the artifact the
-   Execution agent (Agent 3, not yet built) is designed to consume, per the blueprint.
+1. COMBINED "PROJECT PLAN GUARDRAIL DOCUMENT" - matches Agent 1's pattern.
+   v2.1 (and v2.0) produced 4 separate PDFs with no single document showing
+   open_questions alongside the plan. Added a combined PDF (all 4 sections + Open
+   Questions) mirroring Agent 1's "Scope Guardrail Document (Combined)" exactly.
 
+2. COVERAGE GUARDRAIL - same class of fix as Agent 1's validate_coverage().
+   validate_coverage() (phase-level) confirms every WBS phase has at least one
+   Timeline row, one Resource Allocation row, and one Cost Baseline row referencing
+   it, appending a specific open_questions entry for any gap.
+   validate_unspecified_markers() is a second, narrower guardrail: if any field was
+   marked UNSPECIFIED but open_questions came back empty, it flags that explicitly -
+   the direct fix for an observed live bug where a Cost Management Plan came back
+   100% "UNSPECIFIED - see open questions" with zero open_questions explaining why.
+
+WHAT v2.1 CHANGED FROM v2.0 (carried through unchanged in this pass, input/UI only):
+
+1. INPUT MODEL NOW MATCHES AGENT 1 (Goals & Scope). Replaced the single-purpose
+   "Budget Spreadsheet" file upload (XLSX/CSV/PDF/TXT) with the same pattern as
+   Agent 1: a pasted-text box for budget/financial data PLUS a multi-file "Upload
+   Supporting Documents" field accepting any file type/count. Both optional and
+   additive to the manual Milestones/Timeline/Resources fields.
+   NOTE - HANDOFF SCHEMA CHANGE FOR THE FRONTEND: generate_project_plan()'s
+   positional signature changed from v2.0's
+     (project_name, milestones, timeline_input, resources, budget_file,
+      methodology, handoff_upload)                                    [7 args]
+   to v2.2's
+     (project_name, milestones, timeline_input, resources, budget_text_input,
+      supporting_uploads, methodology, handoff_upload)                [8 args]
+   - budget_file (single spreadsheet) is gone; budget_text_input (str) and
+   supporting_uploads (list) are new and sit in different positions. The old
+   ProjectPlanning.jsx sends 6 positional items with budget hardcoded to null and
+   never wires up a handoff upload at all - flag this to Aatish explicitly, the
+   frontend needs a matching rewrite, not just a redeploy of this file.
+
+2. UI LAYOUT NOW MATCHES AGENT 1's STRUCTURE EXACTLY. No custom CSS block.
+
+WHAT v2.0 CHANGED FROM v1.0 (carried through unchanged in this pass):
+
+1. REAL SYSTEM PROMPT (see agent_prompt.md for the readable reference copy).
+2. INGESTS THE GOALS & SCOPE HANDOFF PACKAGE directly - manual fields are still
+   available and are treated as overrides/additions.
+3. ONE STRUCTURED JSON CALL instead of 4 isolated ones.
+4. ANTI-GENERICISM GUARDRAILS + open_questions, mirroring Agent 1.
+5. PRODUCES ITS OWN HANDOFF PACKAGE ("Backbone Plan" JSON) for the future Execution
+   agent (Agent 3, not yet built).
 6. PRODUCTION HARDENING: session-safe file naming, retries with backoff, input
-   truncation, temperature tuned down, and errors surfaced instead of raised.
-
-7. FIREBASE STORAGE OUTPUT LAYER RESTORED (merged back in from v1.0).
-   v2.0 as received was a bare Gradio app writing to /tmp only - it had dropped the
-   Flask REST API, CORS, and Firebase Storage upload layer that the frontend
-   (aihyperdox.com) depends on. That layer is restored here unchanged from v1.0's
-   behavior, including v1.0's origin-restricted CORS policy: every generated file
-   (PDFs + the new "Backbone Plan" JSON handoff) is uploaded to Firebase Storage and
-   returned as a permanent, token-authenticated download URL, so documents survive
-   server restarts/redeploys and the frontend keeps working exactly as it did before
-   this version bump. See upload_to_storage() for details.
+   truncation, temperature tuned down, errors surfaced instead of raised.
 
 NOTE ON MIGRATION: the only OpenAI-specific code lives in call_llm() - identical
 shape to Agent 1's, so both can be swapped to Anthropic in the same pass later.
 """
 
+import base64
 import json
 import os
 import threading
@@ -65,6 +111,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, ListFlowable, ListItem,
+    PageBreak,
 )
 
 try:
@@ -105,7 +152,7 @@ def upload_to_storage(local_path: str, project_name: str, doc_title: str, conten
     Upload a local file (PDF or the Backbone Plan JSON handoff) to Firebase Storage
     and return a PERMANENT, browser-fetchable download URL.
 
-    Unchanged from v1.0: a gs:// URI can only be resolved by the Firebase SDK
+    Unchanged from v2.0: a gs:// URI can only be resolved by the Firebase SDK
     (getBytes()/getDownloadURL()), not a plain fetch()/<a href> in the frontend.
     Signed URLs were also considered but expire after 7 days. The fix is a Firebase
     Storage download token attached to the blob's metadata, producing a URL of the
@@ -152,7 +199,7 @@ def upload_to_storage(local_path: str, project_name: str, doc_title: str, conten
 # ── App setup ───────────────────────────────────────────────────
 app = Flask(__name__)
 
-# ── CORS fix: explicitly allow all frontend origins ─────────────
+# ── CORS: explicitly allow only the known frontend origins ──────
 CORS(app, resources={r"/api/*": {
     "origins": [
         "https://aihyperdox.com",
@@ -190,14 +237,17 @@ RETRY_BACKOFF_SECONDS = 2
 MAX_FIELD_CHARS = 4000
 MAX_UPLOAD_CHARS = 6000
 MAX_HANDOFF_CHARS = 6000
+MAX_UPLOAD_FILE_BYTES = 5 * 1024 * 1024  # server-side backstop on raw file bytes (5MB) -
+                                          # the frontend caps at 2MB/file client-side, but a
+                                          # client limit alone isn't trustworthy; enforce here too
 
 RUN_DIR = "/tmp/aipm_runs"
 os.makedirs(RUN_DIR, exist_ok=True)
 
-AGENT_VERSION = "2.0"
+AGENT_VERSION = "2.2"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# System prompt
+# System prompt - unchanged agent logic
 # ─────────────────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """You are AIPM, an AI project-management advisor built from Monte Turner's
@@ -296,12 +346,46 @@ Rules for this JSON:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def extract_text_from_file(uploaded_file):
-    name = getattr(uploaded_file, "name", "uploaded_file").lower()
+    # BUGFIX (v2.1, unchanged here): a plain string filepath has no .name attribute,
+    # so the old getattr(uploaded_file, "name", "uploaded_file") always fell back to
+    # the literal string "uploaded_file" for string paths - which is exactly what
+    # Gradio's file_count="multiple" hands us per item.
+    #
+    # NEW in this pass: also accepts {"name": str, "data": str} dicts - what the React
+    # frontend's /api/predict call sends. A raw browser File object can't survive
+    # JSON.stringify(), so the frontend reads it via FileReader.readAsDataURL() and
+    # sends the base64 result (optionally still carrying its "data:<mime>;base64,"
+    # prefix, stripped below) instead of a filesystem path. Same pattern as Agent 1's
+    # extract_text_from_file().
+    is_dict = isinstance(uploaded_file, dict)
+    if is_dict:
+        name = str(uploaded_file.get("name", "uploaded_file")).lower()
+    elif isinstance(uploaded_file, str):
+        name = uploaded_file.lower()
+    else:
+        name = str(getattr(uploaded_file, "name", "uploaded_file")).lower()
+
     try:
-        with open(uploaded_file, "rb") as f:
-            data = f.read()
+        if is_dict:
+            b64 = uploaded_file.get("data") or uploaded_file.get("content") or ""
+            if isinstance(b64, str) and b64.strip().lower().startswith("data:") and "," in b64:
+                b64 = b64.split(",", 1)[1]   # strip "data:application/pdf;base64," prefix
+            data = base64.b64decode(b64) if b64 else b""
+        elif hasattr(uploaded_file, "data"):
+            data = uploaded_file.data
+        elif isinstance(uploaded_file, bytes):
+            data = uploaded_file
+        elif isinstance(uploaded_file, str):
+            with open(uploaded_file, "rb") as f:
+                data = f.read()
+        else:
+            with open(getattr(uploaded_file, "name", uploaded_file), "rb") as f:
+                data = f.read()
     except Exception:
         data = b""
+
+    if len(data) > MAX_UPLOAD_FILE_BYTES:
+        return f"(Skipped {os.path.basename(name)}: file exceeds {MAX_UPLOAD_FILE_BYTES // (1024 * 1024)}MB server-side limit)"
 
     text = ""
     try:
@@ -334,13 +418,27 @@ def extract_text_from_file(uploaded_file):
 
 
 def extract_handoff_json(uploaded_file):
-    """Reads a Goals & Scope handoff .json file. Returns dict or None."""
+    """Reads a Goals & Scope handoff .json file. Returns (dict_or_None, warning_or_None).
+
+    NEW in this pass: also accepts a {"name": str, "data": str} base64 dict (what the
+    React frontend sends), in addition to the existing Gradio-native string path/object
+    shapes - same reasoning as extract_text_from_file() above.
+    """
     if uploaded_file is None:
         return None, None
     try:
-        path = uploaded_file if isinstance(uploaded_file, str) else getattr(uploaded_file, "name", None)
-        with open(path, "r") as f:
-            raw = f.read()
+        if isinstance(uploaded_file, dict):
+            b64 = uploaded_file.get("data") or uploaded_file.get("content") or ""
+            if isinstance(b64, str) and b64.strip().lower().startswith("data:") and "," in b64:
+                b64 = b64.split(",", 1)[1]
+            raw_bytes = base64.b64decode(b64) if b64 else b""
+            if len(raw_bytes) > MAX_UPLOAD_FILE_BYTES:
+                return None, f"⚠ Handoff file exceeds {MAX_UPLOAD_FILE_BYTES // (1024 * 1024)}MB server-side limit - ignoring it."
+            raw = raw_bytes.decode("utf-8", errors="ignore")
+        else:
+            path = uploaded_file if isinstance(uploaded_file, str) else getattr(uploaded_file, "name", None)
+            with open(path, "r") as f:
+                raw = f.read()
         data = json.loads(raw)
         if data.get("handoff_type") != "goals_and_scope_output":
             return None, "⚠ Uploaded file doesn't look like a Goals & Scope handoff package - ignoring it."
@@ -359,7 +457,7 @@ def truncate(text, limit):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LLM call
+# LLM call - unchanged agent logic
 # ─────────────────────────────────────────────────────────────────────────────
 
 def call_llm(system_msg, user_prompt):
@@ -396,7 +494,107 @@ def call_llm(system_msg, user_prompt):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PDF rendering
+# Coverage validation - unchanged agent logic (v2.2, mirrors Agent 1's validate_coverage())
+# ─────────────────────────────────────────────────────────────────────────────
+
+def validate_coverage(data):
+    """Flag WBS phases with no corresponding Timeline, Resource Allocation, or
+    Cost Baseline entry, instead of silently letting the model under-cover them.
+
+    Checked at the phase/epic level rather than per individual WBS task, since
+    Timeline/Resource/Cost are naturally phase-level artifacts in this schema (a
+    Resource Allocation row typically covers a whole EPIC, not every STORY inside
+    it - matching real output seen from this agent). A phase counts as covered if
+    ANY of its WBS task IDs, or the phase name itself, appears in the relevant
+    section. Deliberately a crude string-match check, not semantic matching - same
+    tradeoff as Agent 1's version: false positives just add an extra
+    open_questions entry for a human to dismiss, false negatives are the exact
+    silent-omission bug this exists to catch.
+    """
+    wbs_items = data.get("wbs", [])
+    if not wbs_items:
+        return data
+
+    wbs_ids_by_phase = {}
+    for w in wbs_items:
+        phase = str(w.get("phase_or_epic", "")).strip()
+        if not phase:
+            continue
+        wbs_ids_by_phase.setdefault(phase, set()).add(str(w.get("wbs_id", "")).strip())
+
+    timeline_rows = data.get("timeline", {}).get("rows", [])
+    resource_rows = data.get("resource_allocation", {}).get("rows", [])
+    cost_rows = data.get("cost_plan", {}).get("cost_baseline", [])
+
+    timeline_refs = ({str(r.get("wbs_id", "")).strip() for r in timeline_rows} |
+                      {str(r.get("phase_or_sprint", "")).strip() for r in timeline_rows})
+    resource_refs = {str(r.get("wbs_id_or_phase", "")).strip() for r in resource_rows}
+    cost_refs = {str(r.get("wbs_id_or_phase", "")).strip() for r in cost_rows}
+
+    open_qs = data.setdefault("open_questions", [])
+    for phase, ids in wbs_ids_by_phase.items():
+        covered_by = ids | {phase}
+        if not (covered_by & timeline_refs):
+            open_qs.append(
+                f"No Timeline entry appears tied to WBS phase '{phase}' - "
+                f"confirm scheduling for this phase."
+            )
+        if not (covered_by & resource_refs):
+            open_qs.append(
+                f"No Resource Allocation entry appears tied to WBS phase '{phase}' - "
+                f"confirm ownership/staffing for this phase."
+            )
+        if not (covered_by & cost_refs):
+            open_qs.append(
+                f"No Cost Baseline entry appears tied to WBS phase '{phase}' - "
+                f"confirm a cost estimate exists for this phase."
+            )
+    return data
+
+
+def validate_unspecified_markers(data):
+    """If any field was marked UNSPECIFIED by the model but open_questions came
+    back empty, flag that explicitly rather than letting a plan look complete
+    while actually being silently hollow.
+
+    This is the direct fix for a real observed pattern: a Cost Management Plan
+    where every single field (est_cost, actual, variance, estimation_method,
+    contingency, thresholds, cadence, metrics) came back "UNSPECIFIED - see open
+    questions" with no corresponding open_questions entries explaining why -
+    exactly the failure mode the anti-genericism rule is supposed to prevent.
+    """
+    marker = "UNSPECIFIED - see open questions"
+    found = {"flag": False}
+
+    def scan(obj):
+        if found["flag"]:
+            return
+        if isinstance(obj, dict):
+            for v in obj.values():
+                scan(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                scan(v)
+        elif isinstance(obj, str) and marker in obj:
+            found["flag"] = True
+
+    scan(data.get("wbs", []))
+    scan(data.get("timeline", {}))
+    scan(data.get("resource_allocation", {}))
+    scan(data.get("cost_plan", {}))
+
+    open_qs = data.setdefault("open_questions", [])
+    if found["flag"] and not open_qs:
+        open_qs.append(
+            "One or more plan fields were marked UNSPECIFIED but no open_questions "
+            "were logged explaining why - review the plan for unresolved gaps "
+            "before treating it as complete."
+        )
+    return data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PDF rendering - unchanged agent logic
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _styles():
@@ -521,6 +719,64 @@ def build_all_pdfs(run_dir, project_name, data):
     doc.build(story)
     pdfs["Cost Management Plan"] = path
 
+    # Combined Project Plan Guardrail Document (all sections + open questions)
+    path, doc, story = new_doc("Project Plan Guardrail Document (Combined)")
+    story.append(Paragraph("Work Breakdown Structure", styles["AIPMH2"]))
+    story.append(_table_from_dicts(
+        data.get("wbs", []),
+        [("wbs_id", "WBS ID", 0.09), ("task_name", "Task", 0.18), ("description", "Description", 0.27),
+         ("owner", "Owner", 0.12), ("est_duration", "Duration", 0.10), ("dependencies", "Deps", 0.12),
+         ("phase_or_epic", "Phase/Epic", 0.12)],
+        styles,
+    ))
+    story.append(PageBreak())
+    story.append(Paragraph("Project Timeline", styles["AIPMH2"]))
+    story.append(Paragraph(f"<i>{timeline.get('gantt_summary', '')}</i>", styles["Normal"]))
+    story.append(Spacer(1, 8))
+    story.append(_table_from_dicts(
+        timeline.get("rows", []),
+        [("phase_or_sprint", "Phase/Sprint", 0.13), ("wbs_id", "WBS ID", 0.08), ("task", "Task", 0.19),
+         ("start_date", "Start", 0.10), ("end_date", "End", 0.10), ("duration", "Dur.", 0.08),
+         ("milestone", "Milestone", 0.12), ("owner", "Owner", 0.10), ("status", "Status", 0.10)],
+        styles,
+    ))
+    story.append(PageBreak())
+    story.append(Paragraph("Resource Allocation Plan", styles["AIPMH2"]))
+    story.append(_table_from_dicts(
+        ra.get("rows", []),
+        [("resource_name_or_role", "Resource", 0.18), ("type", "Type", 0.10),
+         ("wbs_id_or_phase", "WBS/Phase", 0.14), ("allocation_pct", "Alloc %", 0.09),
+         ("est_hours", "Hours", 0.09), ("cost_rate", "Rate", 0.12), ("notes", "Notes", 0.28)],
+        styles,
+    ))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph("Utilization Summary", styles["Normal"]))
+    story.append(Paragraph(ra.get("utilization_summary", ""), styles["Normal"]))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph("Over-Allocation Warnings", styles["Normal"]))
+    story.append(_bullet_list(ra.get("overallocation_warnings", []), styles))
+    story.append(PageBreak())
+    story.append(Paragraph("Cost Management Plan", styles["AIPMH2"]))
+    story.append(_table_from_dicts(
+        cp.get("cost_baseline", []),
+        [("category", "Category", 0.22), ("wbs_id_or_phase", "WBS/Phase", 0.15), ("est_cost", "Est. Cost", 0.18),
+         ("actual", "Actual", 0.18), ("variance", "Variance", 0.27)],
+        styles,
+    ))
+    for label, key in [("Cost Estimation Method", "estimation_method"),
+                        ("Budget Contingency", "contingency_pct"),
+                        ("Cost Control Thresholds", "control_thresholds"),
+                        ("Reporting Cadence", "reporting_cadence"),
+                        ("Cost Performance Metrics", "performance_metrics")]:
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(label, styles["Normal"]))
+        story.append(Paragraph(str(cp.get(key, "")), styles["Normal"]))
+    story.append(Spacer(1, 10))
+    story.append(Paragraph("Open Questions", styles["AIPMH2"]))
+    story.append(_bullet_list(data.get("open_questions", []), styles))
+    doc.build(story)
+    pdfs["Project Plan Guardrail Document (Combined)"] = path
+
     return pdfs
 
 
@@ -529,12 +785,13 @@ def build_all_pdfs(run_dir, project_name, data):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def generate_project_plan(project_name, milestones, timeline_input, resources,
-                           budget_file, methodology, handoff_upload):
-    if not any([project_name, milestones, timeline_input, resources, handoff_upload]):
+                           budget_text_input, supporting_uploads, methodology, handoff_upload):
+    if not any([project_name, milestones, timeline_input, resources,
+                budget_text_input, supporting_uploads, handoff_upload]):
         return (
             "⚠ Please provide at least a Project Name and some planning details, "
             "or upload a Goals & Scope handoff package.",
-            None, None, None, None, None,
+            None, None, None, None, None, None,
         )
 
     run_id = uuid.uuid4().hex[:10]
@@ -543,9 +800,20 @@ def generate_project_plan(project_name, milestones, timeline_input, resources,
 
     handoff_data, handoff_warning = extract_handoff_json(handoff_upload)
 
-    budget_text = ""
-    if budget_file is not None:
-        budget_text = extract_text_from_file(budget_file)
+    # Supporting documents: any file type/count, same pattern as Agent 1 (Goals & Scope).
+    # Not limited to budget files - resource lists, timelines, etc. can go here too.
+    extra_text = ""
+    if supporting_uploads:
+        for f in supporting_uploads:
+            extracted = extract_text_from_file(f)
+            if isinstance(f, dict):
+                fname = f.get("name", "uploaded file")
+            elif isinstance(f, str):
+                fname = f
+            else:
+                fname = getattr(f, "name", "uploaded file")
+            fname = os.path.basename(str(fname))
+            extra_text += f"\n\n[Extracted from {fname}]\n{extracted}"
 
     handoff_context = "Not provided - no Goals & Scope handoff package was uploaded."
     if handoff_data:
@@ -573,8 +841,11 @@ Manual High-Level Timeline Input:
 Manual Resource List Input:
 {truncate(resources, MAX_FIELD_CHARS) or 'Not specified'}
 
-Budget / Financial Data:
-{truncate(budget_text, MAX_UPLOAD_CHARS) or 'Not provided'}
+Budget / Financial Data (pasted directly):
+{truncate(budget_text_input, MAX_FIELD_CHARS) or 'Not provided'}
+
+Uploaded Supporting Documents Content (any type - budget, resources, timeline, etc.):
+{truncate(extra_text, MAX_UPLOAD_CHARS) or 'None uploaded'}
 
 Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 """
@@ -592,12 +863,15 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
     try:
         data = call_llm(SYSTEM_PROMPT, user_prompt)
     except Exception as e:
-        return (f"⚠ Generation failed: {e}", None, None, None, None, None)
+        return (f"⚠ Generation failed: {e}", None, None, None, None, None, None)
+
+    data = validate_coverage(data)
+    data = validate_unspecified_markers(data)
 
     try:
         pdfs = build_all_pdfs(run_dir, project_name, data)
     except Exception as e:
-        return (f"⚠ Document rendering failed: {e}", None, None, None, None, None)
+        return (f"⚠ Document rendering failed: {e}", None, None, None, None, None, None)
 
     # Handoff package for Agent 3 (Execution) - "Backbone Plan"
     backbone = {
@@ -618,7 +892,7 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
     with open(backbone_path, "w") as f:
         json.dump(backbone, f, indent=2)
 
-    # Upload every output (PDFs + Backbone Plan JSON) to Firebase Storage → permanent,
+    # Upload every output (5 PDFs + Backbone Plan JSON) to Firebase Storage → permanent,
     # browser-fetchable URLs that survive server restarts/redeploys.
     uploaded = {}
     for title, local_path in pdfs.items():
@@ -635,7 +909,7 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
     status_lines.append(f"✅ All planning documents generated for '{project_name}'" +
                          (" (using Goals & Scope handoff)" if handoff_data else "") + ".")
     if data.get("open_questions"):
-        status_lines.append(f"⚠ {len(data['open_questions'])} open question(s) flagged in the Backbone Plan.")
+        status_lines.append(f"⚠ {len(data['open_questions'])} open question(s) flagged - see the combined document.")
 
     return (
         "\n".join(status_lines),
@@ -643,6 +917,7 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
         uploaded["Project Timeline"],
         uploaded["Resource Allocation Plan"],
         uploaded["Cost Management Plan"],
+        uploaded["Project Plan Guardrail Document (Combined)"],
         uploaded_backbone,
     )
 
@@ -650,6 +925,13 @@ Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
 # ─────────────────────────────────────────────────────────────────────────────
 # Flask REST API — this is what the aihyperdox.com frontend actually calls
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _guess_mimetype(path):
+    """Same hardening as Agent 1: the /download fallback used to hardcode
+    application/pdf even for the .json Backbone Plan. Only matters when Firebase
+    isn't configured and /download is actually serving files."""
+    return "application/json" if path.lower().endswith(".json") else "application/pdf"
+
 
 @app.route("/api/predict", methods=["POST", "OPTIONS"])
 def api_predict():
@@ -662,17 +944,20 @@ def api_predict():
         if len(input_data) < 4:
             return jsonify({"error": "Missing required fields"}), 400
 
-        project_name   = input_data[0] or ""
-        milestones     = input_data[1] or ""
-        timeline_input = input_data[2] or ""
-        resources      = input_data[3] or ""
-        budget_file    = input_data[4] if len(input_data) > 4 else None
-        methodology    = input_data[5] if len(input_data) > 5 else "Agile"
-        handoff_upload = input_data[6] if len(input_data) > 6 else None
+        # Positional order matches generate_project_plan()'s v2.2 signature - NOT the
+        # same order as v2.0/v2.1. See module docstring for the full before/after.
+        project_name       = input_data[0] or ""
+        milestones         = input_data[1] or ""
+        timeline_input     = input_data[2] or ""
+        resources          = input_data[3] or ""
+        budget_text_input  = input_data[4] if len(input_data) > 4 else ""
+        supporting_uploads = input_data[5] if len(input_data) > 5 else []
+        methodology        = input_data[6] if len(input_data) > 6 else "Agile"
+        handoff_upload      = input_data[7] if len(input_data) > 7 else None
 
         result = generate_project_plan(
             project_name, milestones, timeline_input, resources,
-            budget_file, methodology, handoff_upload,
+            budget_text_input, supporting_uploads or [], methodology, handoff_upload,
         )
         return jsonify({"data": result}), 200
 
@@ -700,34 +985,25 @@ def download_file():
         path,
         as_attachment=True,
         download_name=os.path.basename(path),
-        mimetype="application/pdf"
+        mimetype=_guess_mimetype(path),
     )
 
 
 @app.route("/api/health", methods=["GET"])
 def health_check():
-    return jsonify({"status": "ok", "firebase": _firebase_ready}), 200
+    return jsonify({"status": "ok", "firebase": _firebase_ready, "agent_version": AGENT_VERSION}), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Gradio UI
 # ─────────────────────────────────────────────────────────────────────────────
 
-CUSTOM_CSS = """
-    .header { text-align:center; padding:14px 0 6px; }
-    .header h1 { font-size:1.75rem; font-weight:700; color:#1a3c6e; }
-    .header p  { color:#555; font-size:.93rem; margin-top:3px; }
-    footer { visibility:hidden; }
-"""
-
 with gr.Blocks(title="AIPM - Project Plan Documents") as demo:
 
-    gr.HTML("""
-        <div class="header">
-            <h1>🗂️ AIPM – Planning Agent</h1>
-            <p>Agent 2 of 3 &nbsp;·&nbsp; Goals & Scope → Planning → Execution</p>
-        </div>
-    """)
+    gr.HTML(
+        "<div style='text-align:center'><h1>🗂️ AIPM - Planning Agent</h1>"
+        "<p>Agent 2 of 3 · Goals & Scope → Planning → Execution</p></div>"
+    )
 
     with gr.Row():
         with gr.Column(scale=1):
@@ -757,8 +1033,14 @@ with gr.Blocks(title="AIPM - Project Plan Documents") as demo:
                 placeholder="e.g.\nAnshika – Illustrator (full-time)\nDeepanshu – Animator Intern",
                 lines=5,
             )
-            budget_file = gr.File(
-                label="📊 Budget Spreadsheet - optional (XLSX / CSV / PDF / TXT)", file_count="single",
+            budget_text = gr.Textbox(
+                label="Budget / Financial Data (optional - paste directly)",
+                placeholder="e.g.\nAnthropic API usage (Haiku): ~$15-30/mo est.\nDev time: $0 internal, sweat equity",
+                lines=4,
+            )
+            uploads = gr.File(
+                label="Upload Supporting Documents (optional, any format - budget, resources, timeline, etc.)",
+                file_count="multiple",
             )
             submit_btn = gr.Button("🚀 Generate Project Plan Documents", variant="primary")
 
@@ -768,12 +1050,14 @@ with gr.Blocks(title="AIPM - Project Plan Documents") as demo:
             pdf_tl = gr.File(label="📥 Project Timeline")
             pdf_ra = gr.File(label="📥 Resource Allocation Plan")
             pdf_cm = gr.File(label="📥 Cost Management Plan")
+            pdf_combined = gr.File(label="📥 Project Plan Guardrail Document (Combined)")
             backbone_file = gr.File(label="🔗 Backbone Plan - Handoff for Execution Agent (JSON)")
 
     submit_btn.click(
         fn=generate_project_plan,
-        inputs=[project_name, milestones, timeline, resources, budget_file, methodology, handoff_upload],
-        outputs=[status, pdf_wbs, pdf_tl, pdf_ra, pdf_cm, backbone_file],
+        inputs=[project_name, milestones, timeline, resources, budget_text, uploads,
+                methodology, handoff_upload],
+        outputs=[status, pdf_wbs, pdf_tl, pdf_ra, pdf_cm, pdf_combined, backbone_file],
         show_progress=True,
     )
 
@@ -791,7 +1075,6 @@ if __name__ == "__main__":
             share=False,
             quiet=True,
             theme=gr.themes.Soft(primary_hue="blue", neutral_hue="gray"),
-            css=CUSTOM_CSS,
         )
 
     threading.Thread(target=run_gradio, daemon=True).start()
