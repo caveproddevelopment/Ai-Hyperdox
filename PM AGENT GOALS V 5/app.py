@@ -70,8 +70,19 @@ frontend's download contract.
 NOTE ON MIGRATION: the only OpenAI-specific code lives in call_llm(). Swapping to the
 Anthropic API later means rewriting that one function - nothing else in this file needs
 to change. Still deprioritized as of v5.0.
+
+11. FRONTEND FILE-UPLOAD WIRING (this pass). GoalsAndScope.jsx tracked the selected
+    file in React state (drag-drop, 2MB validation, filename display) but never
+    actually included it in the /api/predict request body - the uploads field was
+    hardcoded to []. Fixed on the frontend by base64-encoding the file via
+    FileReader.readAsDataURL() before POSTing. Backend change to match:
+    extract_text_from_file() now also accepts a {"name": str, "data": str} dict shape
+    (base64, optionally still carrying a "data:<mime>;base64," prefix) alongside the
+    existing Gradio string/object shapes, plus MAX_UPLOAD_FILE_BYTES as a server-side
+    size backstop independent of the frontend's client-side check.
 """
 
+import base64
 import json
 import os
 import threading
@@ -202,6 +213,9 @@ RETRY_BACKOFF_SECONDS = 2
 
 MAX_FIELD_CHARS = 4000     # guardrail on manual textbox input
 MAX_UPLOAD_CHARS = 8000    # guardrail on extracted uploaded-file text
+MAX_UPLOAD_FILE_BYTES = 5 * 1024 * 1024  # server-side backstop on raw file bytes (5MB) -
+                                          # the frontend caps at 2MB client-side, but a client
+                                          # limit alone isn't trustworthy; enforce here too
 
 RUN_DIR = "/tmp/aipm_runs"
 os.makedirs(RUN_DIR, exist_ok=True)
@@ -325,12 +339,26 @@ def extract_text_from_file(uploaded_file):
     # upload down the "Unsupported file type" branch regardless of actual extension,
     # meaning uploaded documents were being read into memory but never actually
     # parsed. Runtime-verified fixed against both .txt and real .pdf uploads.
-    if isinstance(uploaded_file, str):
+    #
+    # NEW: also accepts {"name": str, "data": str} dicts - what the React frontend's
+    # /api/predict call sends. A raw browser File object can't survive
+    # JSON.stringify(), so the frontend reads it via FileReader.readAsDataURL() and
+    # sends the base64 result (optionally still carrying its "data:<mime>;base64,"
+    # prefix, which is stripped below) instead of a filesystem path.
+    is_dict = isinstance(uploaded_file, dict)
+    if is_dict:
+        name = str(uploaded_file.get("name", "uploaded_file")).lower()
+    elif isinstance(uploaded_file, str):
         name = uploaded_file.lower()
     else:
         name = str(getattr(uploaded_file, "name", "uploaded_file")).lower()
     try:
-        if hasattr(uploaded_file, "data"):
+        if is_dict:
+            b64 = uploaded_file.get("data") or uploaded_file.get("content") or ""
+            if isinstance(b64, str) and b64.strip().lower().startswith("data:") and "," in b64:
+                b64 = b64.split(",", 1)[1]   # strip "data:application/pdf;base64," prefix
+            data = base64.b64decode(b64) if b64 else b""
+        elif hasattr(uploaded_file, "data"):
             data = uploaded_file.data
         elif isinstance(uploaded_file, bytes):
             data = uploaded_file
@@ -342,6 +370,9 @@ def extract_text_from_file(uploaded_file):
                 data = f.read()
     except Exception:
         data = b""
+
+    if len(data) > MAX_UPLOAD_FILE_BYTES:
+        return f"(Skipped {os.path.basename(name)}: file exceeds {MAX_UPLOAD_FILE_BYTES // (1024 * 1024)}MB server-side limit)"
 
     text = ""
     try:
@@ -665,8 +696,13 @@ def generate_documents(project_name, problem, summary, long_desc, uploads):
     if uploads:
         for f in uploads:
             extracted = extract_text_from_file(f)
-            fname = f if isinstance(f, str) else getattr(f, "name", "uploaded file")
-            fname = os.path.basename(fname)
+            if isinstance(f, dict):
+                fname = f.get("name", "uploaded file")
+            elif isinstance(f, str):
+                fname = f
+            else:
+                fname = getattr(f, "name", "uploaded file")
+            fname = os.path.basename(str(fname))
             extra_text += f"\n\n[Extracted from {fname}]\n{extracted}"
 
     context = f"""Project: {truncate(project_name, 200)}
