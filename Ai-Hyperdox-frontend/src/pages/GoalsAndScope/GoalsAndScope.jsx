@@ -30,6 +30,20 @@ function resolveProjectIcon(iconValue) {
   return PROJECT_ICONS.find(i => i.name === iconValue)?.url ?? null;
 }
 
+// Reads a browser File into a base64 data URL. A raw File object can't survive
+// JSON.stringify() (it serializes to "{}"), so this is how the file's actual bytes
+// get into the /api/predict request body. The backend strips the leading
+// "data:<mime>;base64," prefix before decoding, so it's fine to send reader.result
+// as-is rather than manually slicing the prefix off here.
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Could not read the selected file."));
+    reader.readAsDataURL(file);
+  });
+}
+
 const NAV_LINKS = [
   { label: "Products",     to: "/products"    },
   { label: "How It Works", to: "/how-it-works" },
@@ -44,6 +58,8 @@ const OUTPUT_DOCS = [
   { docKey: "risk",       label: "Risk Document (Download)" },
   { docKey: "milestones", label: "Proposed Milestones Document (Download)" },
   { docKey: "resources",  label: "Resource Teams Required Document (Download)" },
+  { docKey: "combined",   label: "Scope Guardrail Document - Combined (Download)" },
+  { docKey: "handoff",    label: "Handoff Package for Planning Agent (JSON)", icon: "🔗", isJson: true },
 ];
 
 export default function GoalsAndScope() {
@@ -129,6 +145,21 @@ export default function GoalsAndScope() {
     setDocs(null);
     setCurrentRunId(null);
 
+    // ── STEP 0: Encode the uploaded file (if any) ──────────────────
+    // Done before billing so a bad file surfaces immediately rather than after
+    // the user has already been charged.
+    let uploadsPayload = [];
+    if (uploadedFile) {
+      try {
+        const base64 = await fileToBase64(uploadedFile);
+        uploadsPayload = [{ name: uploadedFile.name, data: base64 }];
+      } catch (err) {
+        setStatus(`Could not read "${uploadedFile.name}": ${err.message}`);
+        setLoading(false);
+        return;
+      }
+    }
+
     // ── STEP 1: Billing ──────────────────────────────────────────
     let runId = null;
     try {
@@ -156,7 +187,7 @@ export default function GoalsAndScope() {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          data: [form.project_name, form.problem, form.summary, form.long_desc, []],
+          data: [form.project_name, form.problem, form.summary, form.long_desc, uploadsPayload],
           api_name: "/generate_documents",
         }),
       });
@@ -166,9 +197,9 @@ export default function GoalsAndScope() {
       const result = await response.json();
       if (!result.data || !Array.isArray(result.data)) throw new Error("Invalid response format from server.");
 
-      const [statusMsg, goals, scope, risk, milestones, resources] = result.data;
+      const [statusMsg, goals, scope, risk, milestones, resources, combined, handoff] = result.data;
       setStatus(statusMsg);
-      setDocs({ goals, scope, risk, milestones, resources });
+      setDocs({ goals, scope, risk, milestones, resources, combined, handoff });
 
       // ── STEP 3: Save to Firestore ────────────────────────────
       const runDate = new Date().toLocaleDateString("en-US", {
@@ -183,7 +214,7 @@ export default function GoalsAndScope() {
 
       if (runId) {
         await updateDoc(doc(db, "runs", runId), {
-          documents:   { goals, scope, risk, milestones, resources },
+          documents:   { goals, scope, risk, milestones, resources, combined, handoff },
           completedAt: Date.now(),
           projectName: form.project_name,
           isPrimary:   false,
@@ -212,6 +243,8 @@ export default function GoalsAndScope() {
   // while still supporting older runs that only have a storage path saved.
   async function downloadDocument(docKey, fileObj, label) {
     if (!fileObj) return;
+
+    const isJsonDoc = OUTPUT_DOCS.find(d => d.docKey === docKey)?.isJson ?? false;
 
     setDownloadingKey(docKey);
     try {
@@ -242,7 +275,12 @@ export default function GoalsAndScope() {
       }
 
       const contentType = res.headers.get("content-type") || "";
-      if (!contentType.includes("pdf") && !contentType.includes("octet-stream")) {
+      if (isJsonDoc) {
+        if (!contentType.includes("json")) {
+          const errText = await res.text();
+          throw new Error(`Expected JSON but got "${contentType}". ${errText.slice(0, 200)}`);
+        }
+      } else if (!contentType.includes("pdf") && !contentType.includes("octet-stream")) {
         const errText = await res.text();
         throw new Error(`Expected a PDF but got "${contentType}". ${errText.slice(0, 200)}`);
       }
@@ -251,7 +289,8 @@ export default function GoalsAndScope() {
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
-      a.download = label.replace(' (Download)', '') + '.pdf';
+      const cleanLabel = label.replace(' (Download)', '').replace(' (JSON)', '');
+      a.download = cleanLabel + (isJsonDoc ? '.json' : '.pdf');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -421,9 +460,9 @@ export default function GoalsAndScope() {
                 </div>
               </div>
 
-              {OUTPUT_DOCS.map(({ docKey, label }) => (
+              {OUTPUT_DOCS.map(({ docKey, label, icon }) => (
                 <div key={docKey} className="gs-field-group">
-                  <label className="gs-label">📄 {label}</label>
+                  <label className="gs-label">{icon ?? "📄"} {label}</label>
                   <div className="gs-output-box">
                     {loading ? (
                       <div className="gs-generating">
