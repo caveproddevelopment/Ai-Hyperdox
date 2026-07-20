@@ -30,6 +30,19 @@ function resolveProjectIcon(iconValue) {
   return PROJECT_ICONS.find(i => i.name === iconValue)?.url ?? null;
 }
 
+// Reads a File into the {"name": str, "data": "data:<mime>;base64,..."} shape the
+// backend's extract_text_from_file()/extract_handoff_json() expect - same pattern
+// used by the Goals & Scope agent's frontend, since a raw browser File object can't
+// survive JSON.stringify() across the /api/predict POST.
+function fileToBase64Payload(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ name: file.name, data: reader.result });
+    reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
 const NAV_LINKS = [
   { label: "Products",     to: "/products"    },
   { label: "How It Works", to: "/how-it-works" },
@@ -38,11 +51,15 @@ const NAV_LINKS = [
   { label: "About Us",     to: "/about"       },
 ];
 
+// ext controls the expected download content-type and the saved file extension -
+// the Backbone Plan is JSON, everything else is a PDF.
 const OUTPUT_DOCS = [
-  { docKey: "wbs",      label: "Work Breakdown Structure (WBS)" },
-  { docKey: "timeline", label: "Project Timeline" },
-  { docKey: "resource", label: "Resource Allocation Plan" },
-  { docKey: "cost",     label: "Cost Management Plan" },
+  { docKey: "wbs",       label: "Work Breakdown Structure (WBS)",                        ext: "pdf"  },
+  { docKey: "timeline",  label: "Project Timeline",                                       ext: "pdf"  },
+  { docKey: "resource",  label: "Resource Allocation Plan",                               ext: "pdf"  },
+  { docKey: "cost",      label: "Cost Management Plan",                                   ext: "pdf"  },
+  { docKey: "combined",  label: "Project Plan Guardrail Document (Combined)",             ext: "pdf"  },
+  { docKey: "backbone",  label: "Backbone Plan - Handoff for Execution Agent (JSON)",      ext: "json" },
 ];
 
 export default function ProjectPlanning() {
@@ -60,11 +77,20 @@ export default function ProjectPlanning() {
     milestones:   "",
     timeline:     "",
     resources:    "",
+    budget_text:  "",
     methodology:  "Agile",
   });
-  const [budgetFile,     setBudgetFile]     = useState(null);
-  const [fileError,      setFileError]      = useState("");
-  const [isDragging,     setIsDragging]     = useState(false);
+
+  // Goals & Scope Handoff Package - single .json upload, optional
+  const [handoffFile,       setHandoffFile]       = useState(null);
+  const [handoffError,      setHandoffError]      = useState("");
+  const [isDraggingHandoff, setIsDraggingHandoff] = useState(false);
+
+  // Upload Supporting Documents - multi-file, any format, optional
+  const [supportingFiles,   setSupportingFiles]   = useState([]);
+  const [supportingError,   setSupportingError]   = useState("");
+  const [isDraggingSupport, setIsDraggingSupport] = useState(false);
+
   const [status,         setStatus]         = useState("");
   const [docs,           setDocs]           = useState(null);
   const [loading,        setLoading]        = useState(false);
@@ -103,31 +129,82 @@ export default function ProjectPlanning() {
     setForm(prev => ({ ...prev, methodology: value }));
   }
 
-  function validateAndSetFile(file) {
+  // ── Goals & Scope Handoff Package (single .json) ──────────────
+  function validateAndSetHandoffFile(file) {
     if (!file) return;
-    if (file.size > MAX_FILE_BYTES) {
-      setFileError(
-        `File too large. Maximum size is ${MAX_FILE_MB}MB. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB.`
-      );
-      setBudgetFile(null);
-      const input = document.getElementById("pp-file-input");
+    if (!file.name.toLowerCase().endsWith(".json")) {
+      setHandoffError("Handoff package must be a .json file exported from the Goals & Scope agent.");
+      setHandoffFile(null);
+      const input = document.getElementById("pp-handoff-input");
       if (input) input.value = "";
       return;
     }
-    setFileError("");
-    setBudgetFile(file);
+    if (file.size > MAX_FILE_BYTES) {
+      setHandoffError(
+        `File too large. Maximum size is ${MAX_FILE_MB}MB. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB.`
+      );
+      setHandoffFile(null);
+      const input = document.getElementById("pp-handoff-input");
+      if (input) input.value = "";
+      return;
+    }
+    setHandoffError("");
+    setHandoffFile(file);
   }
 
-  function handleDrop(e) {
+  function handleDropHandoff(e) {
     e.preventDefault();
-    setIsDragging(false);
-    validateAndSetFile(e.dataTransfer.files[0]);
+    setIsDraggingHandoff(false);
+    validateAndSetHandoffFile(e.dataTransfer.files[0]);
+  }
+
+  function clearHandoffFile(e) {
+    e.stopPropagation();
+    setHandoffFile(null);
+    setHandoffError("");
+    const input = document.getElementById("pp-handoff-input");
+    if (input) input.value = "";
+  }
+
+  // ── Upload Supporting Documents (multi-file, any format) ───────
+  function addSupportingFiles(fileList) {
+    const incoming = Array.from(fileList || []);
+    if (!incoming.length) return;
+
+    const tooLarge = incoming.filter(f => f.size > MAX_FILE_BYTES);
+    const accepted  = incoming.filter(f => f.size <= MAX_FILE_BYTES);
+
+    if (tooLarge.length) {
+      setSupportingError(
+        `${tooLarge.length} file(s) exceeded the ${MAX_FILE_MB}MB limit and were skipped: ` +
+        tooLarge.map(f => f.name).join(", ")
+      );
+    } else {
+      setSupportingError("");
+    }
+
+    if (accepted.length) {
+      setSupportingFiles(prev => [...prev, ...accepted]);
+    }
+    const input = document.getElementById("pp-supporting-input");
+    if (input) input.value = "";
+  }
+
+  function handleDropSupporting(e) {
+    e.preventDefault();
+    setIsDraggingSupport(false);
+    addSupportingFiles(e.dataTransfer.files);
+  }
+
+  function removeSupportingFile(index) {
+    setSupportingFiles(prev => prev.filter((_, i) => i !== index));
   }
 
   async function handleGenerate() {
     if (!form.project_name.trim()) { setStatus("Please enter a project name."); return; }
     if (!BASE_URL)                 { setStatus("API configuration error. BASE_URL is not set."); return; }
-    if (fileError)                 { setStatus("Please remove the invalid file before generating."); return; }
+    if (handoffError)              { setStatus("Please remove the invalid handoff file before generating."); return; }
+    if (supportingError)           { setStatus("Please review the supporting documents before generating."); return; }
 
     setLoading(true);
     setDocs(null);
@@ -156,17 +233,27 @@ export default function ProjectPlanning() {
 
     // ── STEP 2: Generate documents ───────────────────────────────
     try {
+      const [handoffPayload, supportingPayloads] = await Promise.all([
+        handoffFile ? fileToBase64Payload(handoffFile) : Promise.resolve(null),
+        Promise.all(supportingFiles.map(fileToBase64Payload)),
+      ]);
+
       const response = await fetch(`${BASE_URL}/api/predict`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // Positional order must match generate_project_plan()'s v2.2 signature:
+          // (project_name, milestones, timeline_input, resources, budget_text_input,
+          //  supporting_uploads, methodology, handoff_upload)
           data: [
             form.project_name,
             form.milestones,
             form.timeline,
             form.resources,
-            null,
+            form.budget_text,
+            supportingPayloads,
             form.methodology,
+            handoffPayload,
           ],
           api_name: "/generate_project_plan",
         }),
@@ -177,9 +264,9 @@ export default function ProjectPlanning() {
       const result = await response.json();
       if (!result.data || !Array.isArray(result.data)) throw new Error("Invalid response format from server.");
 
-      const [statusMsg, wbs, timeline, resource, cost] = result.data;
+      const [statusMsg, wbs, timeline, resource, cost, combined, backbone] = result.data;
       setStatus(statusMsg);
-      setDocs({ wbs, timeline, resource, cost });
+      setDocs({ wbs, timeline, resource, cost, combined, backbone });
 
       // ── STEP 3: Save to Firestore ────────────────────────────
       const runDate = new Date().toLocaleDateString("en-US", {
@@ -194,16 +281,19 @@ export default function ProjectPlanning() {
 
       if (runId) {
         await updateDoc(doc(db, "runs", runId), {
-          documents:   { wbs, timeline, resource, cost },
+          documents:   { wbs, timeline, resource, cost, combined, backbone },
           completedAt: Date.now(),
           projectName: form.project_name,
           isPrimary:   false,
           inputs: {
-            projectName: form.project_name,
-            milestones:  form.milestones,
-            timeline:    form.timeline,
-            resources:   form.resources,
-            methodology: form.methodology,
+            projectName:         form.project_name,
+            milestones:          form.milestones,
+            timeline:            form.timeline,
+            resources:           form.resources,
+            budgetText:          form.budget_text,
+            methodology:         form.methodology,
+            usedHandoffPackage:  !!handoffFile,
+            supportingFileCount: supportingFiles.length,
           },
         });
       }
@@ -222,7 +312,9 @@ export default function ProjectPlanning() {
   // before falling back to the SDK getDownloadURL(path) call, which is only
   // needed for older runs that only have a storage path saved. Errors now
   // surface the real server response instead of a generic failure.
-  async function downloadDocument(docKey, fileObj, label) {
+  // `ext` distinguishes the Backbone Plan (JSON) from the PDF outputs, both for
+  // the content-type check below and for the saved file's extension.
+  async function downloadDocument(docKey, fileObj, label, ext = "pdf") {
     if (!fileObj) return;
 
     setDownloadingKey(docKey);
@@ -253,17 +345,18 @@ export default function ProjectPlanning() {
         throw new Error(`Server returned ${res.status}: ${errText.slice(0, 300)}`);
       }
 
-      const contentType = res.headers.get("content-type") || "";
-      if (!contentType.includes("pdf") && !contentType.includes("octet-stream")) {
+      const contentType   = res.headers.get("content-type") || "";
+      const expectedHints = ext === "json" ? ["json"] : ["pdf", "octet-stream"];
+      if (!expectedHints.some(hint => contentType.includes(hint))) {
         const errText = await res.text();
-        throw new Error(`Expected a PDF but got "${contentType}". ${errText.slice(0, 200)}`);
+        throw new Error(`Expected a ${ext.toUpperCase()} but got "${contentType}". ${errText.slice(0, 200)}`);
       }
 
       const blob = await res.blob();
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
-      a.download = label.replace(' (Download)', '') + '.pdf';
+      a.download = label.replace(' (Download)', '') + `.${ext}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -343,6 +436,49 @@ export default function ProjectPlanning() {
 
             {/* LEFT */}
             <div className="pp-inputs">
+
+              {/* Goals & Scope Handoff Package */}
+              <div className="pp-field-group">
+                <label className="pp-label">
+                  🔗 Goals & Scope Handoff Package
+                  <span className="pp-file-size-hint"> (optional, .json from Agent 1 — Max {MAX_FILE_MB}MB)</span>
+                </label>
+                <div
+                  className={`pp-upload-box ${isDraggingHandoff ? "pp-upload-box--drag" : ""} ${handoffError ? "pp-upload-box--error" : ""}`}
+                  onDragOver={e => { e.preventDefault(); setIsDraggingHandoff(true); }}
+                  onDragLeave={() => setIsDraggingHandoff(false)}
+                  onDrop={handleDropHandoff}
+                  onClick={() => document.getElementById("pp-handoff-input").click()}
+                >
+                  <input
+                    id="pp-handoff-input"
+                    type="file"
+                    accept=".json"
+                    onChange={e => validateAndSetHandoffFile(e.target.files[0])}
+                    hidden
+                  />
+                  {handoffFile ? (
+                    <p className="pp-upload-name">
+                      📎 {handoffFile.name}
+                      <span className="pp-upload-size"> ({(handoffFile.size / 1024 / 1024).toFixed(2)}MB)</span>
+                    </p>
+                  ) : (
+                    <>
+                      <div className="pp-upload-icon">↑</div>
+                      <p className="pp-upload-text">Drop File Here<br/>- or -<br/>Click to Upload</p>
+                    </>
+                  )}
+                </div>
+
+                {handoffError && <p className="pp-file-error">❌ {handoffError}</p>}
+
+                {handoffFile && !handoffError && (
+                  <button type="button" className="pp-clear-file-btn" onClick={clearHandoffFile}>
+                    ✕ Remove file
+                  </button>
+                )}
+              </div>
+
               <div className="pp-field-group">
                 <label className="pp-label">Project Name</label>
                 <input
@@ -378,7 +514,7 @@ export default function ProjectPlanning() {
               </div>
 
               <div className="pp-field-group">
-                <label className="pp-label">Milestones</label>
+                <label className="pp-label">Milestones (optional if handoff package provided - will be merged)</label>
                 <textarea
                   className="pp-textarea"
                   name="milestones"
@@ -411,7 +547,7 @@ Phase 4: Launch          (Aug 16+)`}
               </div>
 
               <div className="pp-field-group">
-                <label className="pp-label">Resource List</label>
+                <label className="pp-label">Resource List (optional if handoff package provided - will be merged)</label>
                 <textarea
                   className="pp-textarea"
                   name="resources"
@@ -428,62 +564,72 @@ Aatish  – App Developer Intern`}
                 />
               </div>
 
-              {/* Upload */}
+              <div className="pp-field-group">
+                <label className="pp-label">Budget / Financial Data (optional - paste directly)</label>
+                <textarea
+                  className="pp-textarea"
+                  name="budget_text"
+                  placeholder={
+`e.g.
+Anthropic API usage (Haiku): ~$15-30/mo est.
+Dev time: $0 internal, sweat equity`}
+                  value={form.budget_text}
+                  onChange={handleChange}
+                  rows={4}
+                />
+              </div>
+
+              {/* Upload Supporting Documents - multi-file, any format */}
               <div className="pp-field-group">
                 <label className="pp-label">
-                  📊 Budget Spreadsheet — optional
-                  <span className="pp-file-size-hint"> (XLSX / CSV / PDF / TXT — Max {MAX_FILE_MB}MB)</span>
+                  Upload Supporting Documents
+                  <span className="pp-file-size-hint"> (optional, any format - budget, resources, timeline, etc. — Max {MAX_FILE_MB}MB each)</span>
                 </label>
                 <div
-                  className={`pp-upload-box ${isDragging ? "pp-upload-box--drag" : ""} ${fileError ? "pp-upload-box--error" : ""}`}
-                  onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
-                  onClick={() => document.getElementById("pp-file-input").click()}
+                  className={`pp-upload-box ${isDraggingSupport ? "pp-upload-box--drag" : ""} ${supportingError ? "pp-upload-box--error" : ""}`}
+                  onDragOver={e => { e.preventDefault(); setIsDraggingSupport(true); }}
+                  onDragLeave={() => setIsDraggingSupport(false)}
+                  onDrop={handleDropSupporting}
+                  onClick={() => document.getElementById("pp-supporting-input").click()}
                 >
                   <input
-                    id="pp-file-input"
+                    id="pp-supporting-input"
                     type="file"
-                    accept=".xlsx,.xls,.csv,.pdf,.txt"
-                    onChange={e => validateAndSetFile(e.target.files[0])}
+                    multiple
+                    onChange={e => addSupportingFiles(e.target.files)}
                     hidden
                   />
-                  {budgetFile ? (
-                    <p className="pp-upload-name">
-                      📎 {budgetFile.name}
-                      <span className="pp-upload-size"> ({(budgetFile.size / 1024 / 1024).toFixed(2)}MB)</span>
-                    </p>
-                  ) : (
-                    <>
-                      <div className="pp-upload-icon">↑</div>
-                      <p className="pp-upload-text">Drop File Here<br/>- or -<br/>Click to Upload</p>
-                    </>
-                  )}
+                  <div className="pp-upload-icon">↑</div>
+                  <p className="pp-upload-text">Drop File(s) Here<br/>- or -<br/>Click to Upload</p>
                 </div>
 
-                {fileError && <p className="pp-file-error">❌ {fileError}</p>}
+                {supportingError && <p className="pp-file-error">❌ {supportingError}</p>}
 
-                {budgetFile && !fileError && (
-                  <button
-                    type="button"
-                    className="pp-clear-file-btn"
-                    onClick={e => {
-                      e.stopPropagation();
-                      setBudgetFile(null);
-                      setFileError("");
-                      const input = document.getElementById("pp-file-input");
-                      if (input) input.value = "";
-                    }}
-                  >
-                    ✕ Remove file
-                  </button>
+                {supportingFiles.length > 0 && (
+                  <ul className="pp-upload-file-list">
+                    {supportingFiles.map((f, i) => (
+                      <li key={`${f.name}-${i}`} className="pp-upload-file-item">
+                        <span className="pp-upload-name">
+                          📎 {f.name}
+                          <span className="pp-upload-size"> ({(f.size / 1024 / 1024).toFixed(2)}MB)</span>
+                        </span>
+                        <button
+                          type="button"
+                          className="pp-clear-file-btn"
+                          onClick={() => removeSupportingFile(i)}
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
 
               <button
                 className="pp-generate-btn"
                 onClick={handleGenerate}
-                disabled={loading || !!fileError}
+                disabled={loading || !!handoffError || !!supportingError}
               >
                 {loading ? "Generating..." : "🚀 Generate Project Plan Documents"}
               </button>
@@ -498,7 +644,7 @@ Aatish  – App Developer Intern`}
                 </div>
               </div>
 
-              {OUTPUT_DOCS.map(({ docKey, label }) => (
+              {OUTPUT_DOCS.map(({ docKey, label, ext }) => (
                 <div key={docKey} className="pp-field-group">
                   <label className="pp-label">📄 {label}</label>
                   <div className="pp-output-box">
@@ -511,7 +657,7 @@ Aatish  – App Developer Intern`}
                       <button
                         type="button"
                         className="pp-download-link"
-                        onClick={() => downloadDocument(docKey, docs[docKey], label)}
+                        onClick={() => downloadDocument(docKey, docs[docKey], label, ext)}
                         disabled={downloadingKey === docKey}
                       >
                         {downloadingKey === docKey ? "Preparing..." : "⬇ Download"}
