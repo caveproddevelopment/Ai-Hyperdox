@@ -17,7 +17,8 @@ const MAX_HISTORY = 5;
 const GAS_URL =
   "https://script.google.com/macros/s/AKfycbzaw6VLnW2tu4_7y4DxCoEpjZnhJosQSZmuYBX9dMx5mDz26zjRfVEw8LNnNAyXxz8/exec";
 
-const SITE_URL  = "https://ai-hyperdox.vercel.app";
+// Public address of the site (used in the links inside emails). Hosted on Hostinger since Oct 2026.
+const SITE_URL  = "https://aihyperdox.com";
 const EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
 
 async function callGAS(payload) {
@@ -49,7 +50,7 @@ exports.sendVerificationEmail = onCall(
     if (user.emailVerified) return { success: true, message: "Already verified" };
 
     const actionCodeSettings = {
-      url: "https://ai-hyperdox.vercel.app/signin",
+      url: `${SITE_URL}/signin`,
       handleCodeInApp: false,
     };
 
