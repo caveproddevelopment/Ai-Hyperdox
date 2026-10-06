@@ -1,0 +1,19 @@
+# Hostinger: single-page app fallback (does the job vercel.json did on Vercel).
+# Any address that is not a real file (e.g. /dashboard, /project/123/run) is answered
+# with index.html so React Router can show the right page.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
+
+# Always re-check index.html so a new deploy is picked up straight away
+# (the JS/CSS files it points to have a new name on every build).
+<IfModule mod_headers.c>
+  <Files "index.html">
+    Header set Cache-Control "no-cache"
+  </Files>
+</IfModule>
